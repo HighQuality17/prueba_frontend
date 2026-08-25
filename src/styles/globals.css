@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+/*
+  Design tokens — copied verbatim from design/tailwind-v4.css.
+  This block is the single source of truth for the visual system.
+*/
+@theme {
+  /* Colors */
+  --color-void: #000000;
+  --color-bone-white: #ffffff;
+  --color-ash-gray: #9a9a9a;
+  --color-silver-mist: #bdbdbd;
+  --color-electric-iris: #8052ff;
+  --color-saffron-spark: #ffb829;
+  --color-deep-verdant: #15846e;
+
+  /*
+    Typography — Inter is the documented substitute for PPNeueMontreal,
+    loaded via index.html. The brand face stays first in the stack.
+  */
+  --font-ppneuemontreal: 'PPNeueMontreal', 'Inter', ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Typography — Scale */
+  --text-caption: 12px;
+  --leading-caption: 1.5;
+  --text-nav-label: 14px;
+  --leading-nav-label: 1.2;
+  --tracking-nav-label: 0.35px;
+  --text-body: 18px;
+  --leading-body: 1.5;
+  --text-heading-2xs: 24px;
+  --leading-heading-2xs: 1.25;
+  --tracking-heading-2xs: -0.48px;
+  --text-heading-xs: 27px;
+  --leading-heading-xs: 1;
+  --text-subheading: 36px;
+  --leading-subheading: 1.2;
+  --text-heading-sm: 42px;
+  --leading-heading-sm: 1.2;
+  --tracking-heading-sm: -1.68px;
+  --text-heading: 48px;
+  --leading-heading: 1.1;
+  --tracking-heading: -1.68px;
+  --text-heading-lg: 78px;
+  --leading-heading-lg: 1.1;
+  --tracking-heading-lg: -3.12px;
+  --text-display: 113px;
+  --leading-display: 1.1;
+  --tracking-display: -4.52px;
+
+  /* Spacing */
+  --spacing-6: 6px;
+  --spacing-12: 12px;
+  --spacing-18: 18px;
+  --spacing-24: 24px;
+  --spacing-30: 30px;
+  --spacing-36: 36px;
+  --spacing-60: 60px;
+  --spacing-96: 96px;
+  --spacing-120: 120px;
+
+  /* Border Radius */
+  --radius-3xl: 24px;
+  --radius-full: 9999px;
+
+  /* Layout */
+  --container-page: 1280px;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-void);
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-bone-white);
+    font-family: var(--font-ppneuemontreal);
+    font-weight: var(--font-weight-regular);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--color-electric-iris);
+    color: var(--color-bone-white);
+  }
+}
+
+/* Shared typographic primitives built strictly from tokens */
+@layer components {
+  .eyebrow-label {
+    font-size: var(--text-nav-label);
+    line-height: var(--leading-nav-label);
+    letter-spacing: 0.35px;
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    color: var(--color-saffron-spark);
+  }
+
+  .nav-link {
+    font-size: var(--text-nav-label);
+    line-height: var(--leading-nav-label);
+    letter-spacing: 0.35px;
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    color: var(--color-ash-gray);
+    transition: color 150ms ease;
+  }
+
+  .nav-link:hover {
+    color: var(--color-bone-white);
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-12);
+    padding-block: 14px;
+    padding-inline: 24px;
+    border-radius: var(--radius-full);
+    background-color: var(--color-electric-iris);
+    color: var(--color-bone-white);
+    font-size: var(--text-nav-label);
+    line-height: var(--leading-nav-label);
+    letter-spacing: 0.35px;
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    transition: opacity 150ms ease;
+  }
+
+  .btn-primary:hover {
+    opacity: 0.85;
+  }
+
+  .btn-primary:focus-visible {
+    outline: 2px solid var(--color-saffron-spark);
+    outline-offset: 3px;
+  }
+}
