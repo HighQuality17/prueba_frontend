@@ -7,9 +7,18 @@ import {
   ShaderMaterial,
 } from 'three'
 import gsap from 'gsap'
-import { particlesVertexShader, particlesFragmentShader } from './shaders/particles'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import {
+  particlesVertexShader,
+  particlesFragmentShader,
+} from './shaders/particles'
 import { generateCloudPositions } from './utils/generateCloudPositions'
 import { generateSpherePositions } from './utils/generateSpherePositions'
+import { generateHelixPositions } from './utils/generateHelixPositions'
+
+// Registered once for the module lifetime; this file owns the only
+// ScrollTrigger usage in the app.
+gsap.registerPlugin(ScrollTrigger)
 
 /*
   Colors come strictly from the design token palette
@@ -75,9 +84,10 @@ export function ParticleSystem() {
     All buffers are generated once and reused for the lifetime of the
     component; nothing is rebuilt or reallocated per frame.
 
-    `position` holds the organic cloud target; `aPositionSphere` holds the
-    Fibonacci-sphere target. Index i corresponds to the same particle in
-    both arrays, so the GPU can mix() between them per vertex.
+    `position` holds the organic cloud target; `aPositionSphere` and
+    `aPositionHelix` hold the other two shape targets. Index i corresponds
+    to the same particle in every array, so the GPU can piecewise-mix
+    between all three states per vertex.
   */
   const geometry = useMemo(() => {
     const isMobile =
@@ -87,6 +97,7 @@ export function ParticleSystem() {
 
     const cloudPositions = generateCloudPositions(count, POSITION_SEED)
     const spherePositions = generateSpherePositions(count, POSITION_SEED + 1)
+    const helixPositions = generateHelixPositions(count, POSITION_SEED + 2)
 
     const colors = new Float32Array(count * 3)
     const sizes = new Float32Array(count)
@@ -108,6 +119,7 @@ export function ParticleSystem() {
     const geo = new BufferGeometry()
     geo.setAttribute('position', new BufferAttribute(cloudPositions, 3))
     geo.setAttribute('aPositionSphere', new BufferAttribute(spherePositions, 3))
+    geo.setAttribute('aPositionHelix', new BufferAttribute(helixPositions, 3))
     geo.setAttribute('aColor', new BufferAttribute(colors, 3))
     geo.setAttribute('aSize', new BufferAttribute(sizes, 1))
     geo.setAttribute('aSeed', new BufferAttribute(seeds, 1))
@@ -118,31 +130,86 @@ export function ParticleSystem() {
     () => ({
       uTime: { value: 0 },
       uPixelRatio: { value: dpr },
-      uMorphProgress: { value: 0 },
+      uShapeProgress: { value: 0 },
     }),
     [dpr],
   )
 
   /*
-    Temporary Phase 3 preview: slow cloud -> sphere -> cloud loop driven by
-    a single isolated GSAP tween on uMorphProgress. Easing happens here in
-    JS; the shader consumes the raw eased value. This gets replaced by
-    ScrollTrigger wiring in Phase 4 — delete this effect only.
+    Scroll-driven multi-state morph:
+      uShapeProgress 0.0 = cloud, 1.0 = sphere, 2.0 = helix.
+
+    Two explicitly separated scroll ranges each own one segment of the
+    progress scale. Both use gsap.fromTo() with pinned start values and
+    immediateRender: false on the second, so the triggers can never fight
+    over the uniform or reset each other's state — regardless of creation
+    order or scroll direction. ease: "none" + scrub: true keep the GPU
+    state in direct, reversible correspondence with scroll position.
+
+    All triggers live inside gsap.context() so StrictMode double-mounts
+    and unmounts revert exactly what this component created.
   */
   useEffect(() => {
-    if (!materialRef.current) return
+    const material = materialRef.current
+    if (!material) return
 
-    const tween = gsap.to(materialRef.current.uniforms.uMorphProgress, {
-      value: 1,
-      duration: 4,
-      ease: 'sine.inOut',
-      repeat: -1,
-      yoyo: true,
-      repeatDelay: 1,
+    const ctx = gsap.context(() => {
+      // Dev override: VITE_IGNORE_REDUCED_MOTION=true allows testing the
+      // scroll morph locally even when the OS disables animations.
+      const prefersReducedMotion = window.matchMedia(
+        '(prefers-reduced-motion: reduce)',
+      ).matches
+      const ignoreReducedMotion =
+        import.meta.env.VITE_IGNORE_REDUCED_MOTION === 'true'
+      const shouldReduceMotion = prefersReducedMotion && !ignoreReducedMotion
+
+      if (shouldReduceMotion) {
+        // Reduced motion: hold one stable state (the organic cloud).
+        material.uniforms.uShapeProgress.value = 0
+        return
+      }
+
+      const shapeProgress = material.uniforms.uShapeProgress
+
+      // Range A: cloud -> sphere across the Manifesto section approach.
+      gsap.fromTo(
+        shapeProgress,
+        { value: 0 },
+        {
+          value: 1,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: '#manifesto',
+            start: 'top bottom',
+            end: '+=200%',
+            scrub: true,
+          },
+        },
+      )
+
+      // Range B: sphere -> helix across the Practice section approach.
+      gsap.fromTo(
+        shapeProgress,
+        { value: 1 },
+        {
+          value: 2,
+          ease: 'none',
+          immediateRender: false,
+          scrollTrigger: {
+            trigger: '#practice',
+            start: 'top bottom',
+            end: '+=180%',
+            scrub: true,
+          },
+        },
+      )
+
+      // Single intentional refresh once webfonts settle the layout.
+      document.fonts?.ready.then(() => ScrollTrigger.refresh())
     })
 
     return () => {
-      tween.kill()
+      ctx.revert()
     }
   }, [])
 
