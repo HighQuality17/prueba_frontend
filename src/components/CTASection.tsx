@@ -2,7 +2,7 @@ export function CTASection() {
   return (
     <section
       id="join"
-      className="relative flex min-h-[90vh] items-center overflow-hidden"
+      className="relative flex min-h-[170vh] items-start overflow-hidden pt-[40vh]"
     >
       <div className="mx-auto flex w-full max-w-page flex-col items-center gap-36 px-6 py-120 text-center md:px-60">
         <p className="eyebrow-label">Open Invitation</p>

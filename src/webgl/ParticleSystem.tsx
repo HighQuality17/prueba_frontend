@@ -5,6 +5,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   ShaderMaterial,
+  TorusKnotGeometry,
 } from 'three'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
@@ -15,6 +16,7 @@ import {
 import { generateCloudPositions } from './utils/generateCloudPositions'
 import { generateSpherePositions } from './utils/generateSpherePositions'
 import { generateHelixPositions } from './utils/generateHelixPositions'
+import { generateMeshSurfacePositions } from './utils/generateMeshSurfacePositions'
 
 // Registered once for the module lifetime; this file owns the only
 // ScrollTrigger usage in the app.
@@ -99,6 +101,16 @@ export function ParticleSystem() {
     const spherePositions = generateSpherePositions(count, POSITION_SEED + 1)
     const helixPositions = generateHelixPositions(count, POSITION_SEED + 2)
 
+    // One-time mesh surface sampling: elegant torus knot, smooth enough
+    // for even coverage. The source geometry is disposed after sampling.
+    const knotGeometry = new TorusKnotGeometry(1.3, 0.38, 220, 32)
+    const meshPositions = generateMeshSurfacePositions(
+      knotGeometry,
+      count,
+      POSITION_SEED + 3,
+    )
+    knotGeometry.dispose()
+
     const colors = new Float32Array(count * 3)
     const sizes = new Float32Array(count)
     const seeds = new Float32Array(count)
@@ -120,6 +132,7 @@ export function ParticleSystem() {
     geo.setAttribute('position', new BufferAttribute(cloudPositions, 3))
     geo.setAttribute('aPositionSphere', new BufferAttribute(spherePositions, 3))
     geo.setAttribute('aPositionHelix', new BufferAttribute(helixPositions, 3))
+    geo.setAttribute('aPositionMesh', new BufferAttribute(meshPositions, 3))
     geo.setAttribute('aColor', new BufferAttribute(colors, 3))
     geo.setAttribute('aSize', new BufferAttribute(sizes, 1))
     geo.setAttribute('aSeed', new BufferAttribute(seeds, 1))
@@ -198,7 +211,24 @@ export function ParticleSystem() {
           scrollTrigger: {
             trigger: '#practice',
             start: 'top bottom',
-            end: '+=180%',
+            end: '+=150%',
+            scrub: true,
+          },
+        },
+      )
+
+      // Range C: helix -> torus knot across the closing CTA approach.
+      gsap.fromTo(
+        shapeProgress,
+        { value: 2 },
+        {
+          value: 3,
+          ease: 'none',
+          immediateRender: false,
+          scrollTrigger: {
+            trigger: '#join',
+            start: 'top bottom',
+            end: '+=160%',
             scrub: true,
           },
         },
