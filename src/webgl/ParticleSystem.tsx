@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   AdditiveBlending,
@@ -6,10 +6,10 @@ import {
   BufferGeometry,
   ShaderMaterial,
 } from 'three'
-import {
-  particlesVertexShader,
-  particlesFragmentShader,
-} from './shaders/particles'
+import gsap from 'gsap'
+import { particlesVertexShader, particlesFragmentShader } from './shaders/particles'
+import { generateCloudPositions } from './utils/generateCloudPositions'
+import { generateSpherePositions } from './utils/generateSpherePositions'
 
 /*
   Colors come strictly from the design token palette
@@ -26,42 +26,13 @@ const TOKEN = {
 
 const PARTICLE_COUNT_DESKTOP = 12000
 const PARTICLE_COUNT_MOBILE = 7000
-
-/*
-  Organic volumetric distribution: a weighted mixture of anisotropic
-  Gaussian lobes ("clusters") plus one sparse ambient halo. Different
-  weights and radii create areas of higher and lower density instead of
-  uniform noise.
-*/
-interface Lobe {
-  center: [number, number, number]
-  spread: [number, number, number]
-  weight: number
-}
-
-const LOBES: Lobe[] = [
-  { center: [0.0, 0.15, 0.0], spread: [0.55, 0.55, 0.55], weight: 0.3 },
-  { center: [0.7, 0.7, -0.3], spread: [0.45, 0.4, 0.45], weight: 0.18 },
-  { center: [-0.6, -0.5, 0.2], spread: [0.4, 0.35, 0.4], weight: 0.14 },
-  { center: [0.9, -0.6, -0.5], spread: [0.35, 0.3, 0.35], weight: 0.12 },
-  { center: [-0.9, 0.7, -0.4], spread: [0.3, 0.35, 0.3], weight: 0.1 },
-  { center: [0.1, 1.0, 0.4], spread: [0.25, 0.3, 0.25], weight: 0.08 },
-  { center: [-0.2, -1.0, -0.2], spread: [0.25, 0.25, 0.25], weight: 0.08 },
-]
-
-// Sample a standard normal per axis via Box-Muller (one-time CPU cost).
-function gaussian(): number {
-  let u = 0
-  let v = 0
-  while (u === 0) u = Math.random()
-  while (v === 0) v = Math.random()
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
-}
+// Fixed seed keeps both shape targets reproducible for debugging.
+const POSITION_SEED = 1337
 
 type ColorRole = 'neutral' | 'iris' | 'saffron' | 'verdant'
 
-function pickRole(): ColorRole {
-  const r = Math.random()
+function pickRole(random: () => number): ColorRole {
+  const r = random()
   if (r < 0.72) return 'neutral'
   if (r < 0.9) return 'iris'
   if (r < 0.96) return 'saffron'
@@ -75,38 +46,24 @@ function roleColor(role: ColorRole): [number, number, number] {
       const n = Math.random()
       const hex =
         n < 0.4 ? TOKEN.boneWhite : n < 0.72 ? TOKEN.silverMist : TOKEN.ashGray
-      const int = parseInt(hex.slice(1), 16)
-      return [
-        ((int >> 16) & 255) / 255,
-        ((int >> 8) & 255) / 255,
-        (int & 255) / 255,
-      ]
+      return hexToRgb(hex)
     }
-    case 'iris': {
-      const int = parseInt(TOKEN.electricIris.slice(1), 16)
-      return [
-        ((int >> 16) & 255) / 255,
-        ((int >> 8) & 255) / 255,
-        (int & 255) / 255,
-      ]
-    }
-    case 'saffron': {
-      const int = parseInt(TOKEN.saffronSpark.slice(1), 16)
-      return [
-        ((int >> 16) & 255) / 255,
-        ((int >> 8) & 255) / 255,
-        (int & 255) / 255,
-      ]
-    }
-    case 'verdant': {
-      const int = parseInt(TOKEN.deepVerdant.slice(1), 16)
-      return [
-        ((int >> 16) & 255) / 255,
-        ((int >> 8) & 255) / 255,
-        (int & 255) / 255,
-      ]
-    }
+    case 'iris':
+      return hexToRgb(TOKEN.electricIris)
+    case 'saffron':
+      return hexToRgb(TOKEN.saffronSpark)
+    case 'verdant':
+      return hexToRgb(TOKEN.deepVerdant)
   }
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const int = parseInt(hex.slice(1), 16)
+  return [
+    ((int >> 16) & 255) / 255,
+    ((int >> 8) & 255) / 255,
+    (int & 255) / 255,
+  ]
 }
 
 export function ParticleSystem() {
@@ -117,6 +74,10 @@ export function ParticleSystem() {
   /*
     All buffers are generated once and reused for the lifetime of the
     component; nothing is rebuilt or reallocated per frame.
+
+    `position` holds the organic cloud target; `aPositionSphere` holds the
+    Fibonacci-sphere target. Index i corresponds to the same particle in
+    both arrays, so the GPU can mix() between them per vertex.
   */
   const geometry = useMemo(() => {
     const isMobile =
@@ -124,45 +85,19 @@ export function ParticleSystem() {
       window.matchMedia('(max-width: 768px)').matches
     const count = isMobile ? PARTICLE_COUNT_MOBILE : PARTICLE_COUNT_DESKTOP
 
-    const positions = new Float32Array(count * 3)
+    const cloudPositions = generateCloudPositions(count, POSITION_SEED)
+    const spherePositions = generateSpherePositions(count, POSITION_SEED + 1)
+
     const colors = new Float32Array(count * 3)
     const sizes = new Float32Array(count)
     const seeds = new Float32Array(count)
 
-    // Total lobe weight defines how many particles live in clusters vs halo.
-    const lobeWeightSum = LOBES.reduce((sum, lobe) => sum + lobe.weight, 0)
-
     for (let i = 0; i < count; i++) {
+      sizes[i] = Math.random() < 0.7 ? 0.7 + Math.random() * 0.9 : 0.45 + Math.random() * 0.5
+
+      const rgb = roleColor(pickRole(Math.random))
+      const dimmer = sizes[i] < 0.6 ? 0.55 : 1
       const i3 = i * 3
-
-      if (Math.random() < lobeWeightSum) {
-        // Weighted lobe pick + anisotropic Gaussian sample.
-        let target = Math.random() * lobeWeightSum
-        let lobe = LOBES[0]
-        for (const candidate of LOBES) {
-          target -= candidate.weight
-          if (target <= 0) {
-            lobe = candidate
-            break
-          }
-        }
-        positions[i3] = lobe.center[0] + gaussian() * lobe.spread[0]
-        positions[i3 + 1] = lobe.center[1] + gaussian() * lobe.spread[1]
-        positions[i3 + 2] = lobe.center[2] + gaussian() * lobe.spread[2]
-
-        sizes[i] = 0.7 + Math.random() * 0.9
-      } else {
-        // Sparse dim ambient halo scattered through the surrounding void.
-        positions[i3] = (Math.random() * 2 - 1) * 3.4
-        positions[i3 + 1] = (Math.random() * 2 - 1) * 2.4
-        positions[i3 + 2] = (Math.random() * 2 - 1) * 1.8
-
-        sizes[i] = 0.45 + Math.random() * 0.5
-      }
-
-      const rgb = roleColor(pickRole())
-      const isHalo = sizes[i] < 0.6
-      const dimmer = isHalo ? 0.55 : 1
       colors[i3] = rgb[0] * dimmer
       colors[i3 + 1] = rgb[1] * dimmer
       colors[i3 + 2] = rgb[2] * dimmer
@@ -171,7 +106,8 @@ export function ParticleSystem() {
     }
 
     const geo = new BufferGeometry()
-    geo.setAttribute('position', new BufferAttribute(positions, 3))
+    geo.setAttribute('position', new BufferAttribute(cloudPositions, 3))
+    geo.setAttribute('aPositionSphere', new BufferAttribute(spherePositions, 3))
     geo.setAttribute('aColor', new BufferAttribute(colors, 3))
     geo.setAttribute('aSize', new BufferAttribute(sizes, 1))
     geo.setAttribute('aSeed', new BufferAttribute(seeds, 1))
@@ -182,9 +118,33 @@ export function ParticleSystem() {
     () => ({
       uTime: { value: 0 },
       uPixelRatio: { value: dpr },
+      uMorphProgress: { value: 0 },
     }),
     [dpr],
   )
+
+  /*
+    Temporary Phase 3 preview: slow cloud -> sphere -> cloud loop driven by
+    a single isolated GSAP tween on uMorphProgress. Easing happens here in
+    JS; the shader consumes the raw eased value. This gets replaced by
+    ScrollTrigger wiring in Phase 4 — delete this effect only.
+  */
+  useEffect(() => {
+    if (!materialRef.current) return
+
+    const tween = gsap.to(materialRef.current.uniforms.uMorphProgress, {
+      value: 1,
+      duration: 4,
+      ease: 'sine.inOut',
+      repeat: -1,
+      yoyo: true,
+      repeatDelay: 1,
+    })
+
+    return () => {
+      tween.kill()
+    }
+  }, [])
 
   useFrame(({ clock }) => {
     if (!materialRef.current) return

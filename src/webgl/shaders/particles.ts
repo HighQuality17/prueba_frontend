@@ -1,7 +1,9 @@
 export const particlesVertexShader = /* glsl */ `
 uniform float uTime;
 uniform float uPixelRatio;
+uniform float uMorphProgress;
 
+attribute vec3 aPositionSphere;
 attribute float aSize;
 attribute float aSeed;
 attribute vec3 aColor;
@@ -14,13 +16,25 @@ void main() {
   vColor = aColor;
   vRotation = aSeed * 6.2831853;
 
+  // GPU-only morph: both targets are static buffers, only the uniform moves.
+  // sin() adds a subtle outward swirl mid-transition so the path between
+  // shapes is not a straight mechanical line.
+  float morph = uMorphProgress;
+  float swirl = sin(morph * 3.14159265) * 0.18;
+
+  vec3 base = mix(position, aPositionSphere, morph);
+  base += normalize(base + 0.0001) * swirl * (0.4 + aSeed);
+
   // Layered low-frequency trigonometric displacement, unique per particle.
   // Runs entirely on the GPU; positions never leave the buffers.
+  // Amplitude is damped as the structure becomes ordered so the sphere
+  // silhouette stays recognizable.
   float t = uTime * 0.35;
-  vec3 pos = position;
-  pos.x += sin(t * 0.9 + aSeed * 6.2831853 + position.y * 1.6) * 0.07;
-  pos.y += cos(t * 0.7 + aSeed * 12.9898 + position.z * 1.3) * 0.07;
-  pos.z += sin(t * 0.5 + aSeed * 78.233 + position.x * 1.1) * 0.05;
+  float amplitude = mix(1.0, 0.35, morph);
+  vec3 pos = base;
+  pos.x += sin(t * 0.9 + aSeed * 6.2831853 + base.y * 1.6) * 0.07 * amplitude;
+  pos.y += cos(t * 0.7 + aSeed * 12.9898 + base.z * 1.3) * 0.07 * amplitude;
+  pos.z += sin(t * 0.5 + aSeed * 78.233 + base.x * 1.1) * 0.05 * amplitude;
 
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPosition;
