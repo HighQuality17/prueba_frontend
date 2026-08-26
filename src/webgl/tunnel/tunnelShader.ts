@@ -3,21 +3,23 @@
 
   Deterministic constants (documented per Phase 14 requirements):
   - CELL_LENGTH 3.0        world units per repeated tunnel cell
-  - OUTER_THICKNESS 0.09   thin macro arch cage (previously 0.16)
-  - MID_THICKNESS 0.07     counter-rotating diamond lattice
-  - FINE_THICKNESS 0.05    desktop-only folded octahedral ridges
+  - MACRO_THICKNESS 0.068  outer mathematical contour
+  - MID_THICKNESS 0.048    related middle contour
+  - INNER_THICKNESS 0.036  doubled-frequency inner contour
+  - FINE_THICKNESS 0.028   desktop-only tripled-frequency contour
   - MAX_STEPS 64           hard loop bound; uStepLimit lowers it (mobile 40)
   - REFINEMENT_STEPS 3     local corrections after a hit (mobile uses 2)
-  - STEP_SCALE 0.75        conservative step factor: folds/abs() overestimate
-                           distance, so steps are shortened to avoid skipping
+  - STEP_SCALE 0.75        conservative factor for SDF-like radial contours
+                           whose angular radius is not exact Euclidean distance
   - HIT_EPSILON 0.002      surface hit threshold in world units
   - NORMAL_EPSILON         distance-adaptive 0.0038 -> 0.0055 sampling radius
   - MAX_RAY_DISTANCE 30.0  rays beyond this count as miss
   - FOG_DENSITY 0.1        exponential distance fog toward black
 
-  Per pixel cost: <= uStepLimit map evaluations. Each map evaluates two layer
-  distances on mobile and three on desktop. Confirmed hits add 2 mobile / 3
-  desktop local refinements and 4 map evaluations for the tetrahedral normal.
+  Per pixel cost: <= uStepLimit map evaluations. Stable journey stages evaluate
+  three mathematical radii on mobile and four on desktop; two short family
+  transitions evaluate both adjacent curated families. Confirmed hits add 2
+  mobile / 3 desktop refinements and 4 evaluations for the normal.
 */
 
 export const tunnelVertexShader = /* glsl */ `
@@ -40,13 +42,18 @@ uniform float uDetail;
 
 #define TWO_PI 6.28318530718
 #define CELL_LENGTH 3.0
-#define OUTER_RADIUS 1.72
-#define OUTER_ARCH_SIZE 0.36
-#define OUTER_THICKNESS 0.09
-#define MID_RADIUS 1.06
-#define MID_THICKNESS 0.07
-#define FINE_RADIUS 0.68
-#define FINE_THICKNESS 0.05
+#define MACRO_RADIUS 1.76
+#define MACRO_THICKNESS 0.068
+#define MACRO_DEPTH_WIDTH 0.036
+#define MID_RADIUS 1.14
+#define MID_THICKNESS 0.048
+#define MID_DEPTH_WIDTH 0.03
+#define INNER_RADIUS 0.62
+#define INNER_THICKNESS 0.036
+#define INNER_DEPTH_WIDTH 0.024
+#define FINE_RADIUS 0.31
+#define FINE_THICKNESS 0.028
+#define FINE_DEPTH_WIDTH 0.02
 #define MAX_STEPS 64
 #define REFINEMENT_STEPS 3
 #define STEP_SCALE 0.75
@@ -61,10 +68,9 @@ float hash11(float n) {
   return fract(sin(n * 127.1) * 43758.5453);
 }
 
-vec2 rotate2D(vec2 v, float a) {
-  float c = cos(a);
-  float s = sin(a);
-  return mat2(c, -s, s, c) * v;
+float sdBox2D(vec2 p, vec2 halfSize) {
+  vec2 q = abs(p) - halfSize;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
 }
 
 // Cosine palette anchored to violet/yellow/green with cyan/magenta drift.
@@ -73,51 +79,185 @@ vec3 cosinePalette(float t) {
     + vec3(0.45, 0.38, 0.45) * cos(TWO_PI * (t + vec3(0.82, 0.58, 0.34)));
 }
 
-float foldAngle(float angle, float symmetry) {
-  float sector = TWO_PI / symmetry;
-  float centered = mod(angle + 0.5 * sector, sector) - 0.5 * sector;
-  // Nonnegative mirror coordinates stay continuous at wrapped sector edges
-  // and avoid blending opposite signs during staged symmetry transitions.
-  return abs(centered);
+float roseRadius(
+  float theta,
+  float baseRadius,
+  float amplitude,
+  float symmetry,
+  float phase
+) {
+  return baseRadius + amplitude * cos(symmetry * theta + phase);
 }
 
-float symmetryCount(float phase) {
-  if (phase < 0.28) return 6.0;
-  if (phase < 0.4) {
-    return mix(6.0, 8.0, smoothstep(0.28, 0.4, phase));
-  }
-  if (phase < 0.62) return 8.0;
-  if (phase < 0.76) {
-    return mix(8.0, 12.0, smoothstep(0.62, 0.76, phase));
-  }
-  return 12.0;
+float harmonicRadius(
+  float theta,
+  float baseRadius,
+  vec3 amplitudes,
+  float symmetry,
+  float phase
+) {
+  float fundamental = symmetry * theta + phase;
+  return baseRadius
+    + amplitudes.x * cos(fundamental)
+    + amplitudes.y * cos(2.0 * fundamental)
+    + amplitudes.z * cos(3.0 * fundamental);
 }
 
 /*
-  Keep folds at stable integer sector counts, only crossfading folded angles
-  during two short 6 -> 8 -> 12 transitions. This avoids persistent seams
-  from feeding a fractional sector count directly to mod().
+  Numerically guarded Gielis superformula:
+  r = (|cos(m*theta/4)/a|^n2 + |sin(m*theta/4)/b|^n3)^(-1/n1)
 */
-float stagedFoldAngle(float angle, float phase, float frequency) {
-  if (phase < 0.28) return foldAngle(angle, 6.0 * frequency);
+float superformulaRadius(
+  float theta,
+  float m,
+  float a,
+  float b,
+  float n1,
+  float n2,
+  float n3
+) {
+  float safeA = max(abs(a), 0.001);
+  float safeB = max(abs(b), 0.001);
+  float safeN1 = max(abs(n1), 0.08);
+  float angle = m * theta * 0.25;
+  float cosineBase = max(abs(cos(angle) / safeA), 0.0001);
+  float sineBase = max(abs(sin(angle) / safeB), 0.0001);
+  float cosineTerm = pow(cosineBase, clamp(n2, 0.05, 12.0));
+  float sineTerm = pow(sineBase, clamp(n3, 0.05, 12.0));
+  float denominator = clamp(cosineTerm + sineTerm, 0.0001, 10000.0);
+  float exponent = clamp(-1.0 / safeN1, -12.0, -0.02);
+  return clamp(pow(denominator, exponent), 0.3, 2.0);
+}
+
+/*
+  Five curated families (no geometry noise):
+  0: 6-fold soft rose
+  1: 8-fold harmonic star-flower
+  2: 12-fold harmonic mandala
+  3: 8-fold crystalline superformula
+  4: dense 6/12/18 harmonic flower
+*/
+float curatedFamilyRadius(
+  float family,
+  float theta,
+  float baseRadius,
+  float layer,
+  float phase
+) {
+  float layerProgress = clamp(layer / 3.0, 0.0, 1.0);
+  float amplitudeScale = mix(1.0, 0.72, layerProgress);
+  float frequencyScale = 1.0;
+  if (layer > 1.5) frequencyScale = 2.0;
+  if (layer > 2.5) frequencyScale = 3.0;
+  float layerPhase = phase + layer * 0.47;
+
+  if (family < 0.5) {
+    return roseRadius(
+      theta,
+      baseRadius,
+      baseRadius * 0.11 * amplitudeScale,
+      6.0 * frequencyScale,
+      layerPhase
+    );
+  }
+  if (family < 1.5) {
+    return harmonicRadius(
+      theta,
+      baseRadius,
+      baseRadius * vec3(0.08, 0.035, 0.018) * amplitudeScale,
+      8.0 * frequencyScale,
+      layerPhase
+    );
+  }
+  if (family < 2.5) {
+    return harmonicRadius(
+      theta,
+      baseRadius,
+      baseRadius * vec3(0.055, 0.03, 0.016) * amplitudeScale,
+      12.0 * frequencyScale,
+      layerPhase
+    );
+  }
+  if (family < 3.5) {
+    float m = 8.0 * frequencyScale;
+    float superRadius = superformulaRadius(
+      theta + layerPhase / m,
+      m,
+      1.0,
+      1.0,
+      0.42,
+      1.7,
+      1.7
+    );
+    superRadius = clamp(superRadius, 0.55, 1.35);
+    return baseRadius * mix(1.0, superRadius, 0.42 * amplitudeScale);
+  }
+  return harmonicRadius(
+    theta,
+    baseRadius,
+    baseRadius * vec3(0.07, 0.04, 0.022) * amplitudeScale,
+    6.0 * frequencyScale,
+    layerPhase
+  );
+}
+
+/*
+  Stable family stages with two short complete-radius crossfades. x is the
+  sequence offset; y is the blend to the next curated family.
+*/
+vec2 familyEvolution(float phase) {
+  if (phase < 0.3) return vec2(0.0, 0.0);
   if (phase < 0.4) {
-    float blend = smoothstep(0.28, 0.4, phase);
-    return mix(
-      foldAngle(angle, 6.0 * frequency),
-      foldAngle(angle, 8.0 * frequency),
-      blend
-    );
+    return vec2(0.0, smoothstep(0.3, 0.4, phase));
   }
-  if (phase < 0.62) return foldAngle(angle, 8.0 * frequency);
+  if (phase < 0.66) return vec2(1.0, 0.0);
   if (phase < 0.76) {
-    float blend = smoothstep(0.62, 0.76, phase);
-    return mix(
-      foldAngle(angle, 8.0 * frequency),
-      foldAngle(angle, 12.0 * frequency),
-      blend
-    );
+    return vec2(1.0, smoothstep(0.66, 0.76, phase));
   }
-  return foldAngle(angle, 12.0 * frequency);
+  return vec2(2.0, 0.0);
+}
+
+float evolvedFamilyRadius(
+  float cellId,
+  vec2 evolution,
+  float theta,
+  float baseRadius,
+  float layer,
+  float phase
+) {
+  float familyA = mod(cellId + evolution.x, 5.0);
+  float radiusA = curatedFamilyRadius(
+    familyA,
+    theta,
+    baseRadius,
+    layer,
+    phase
+  );
+  if (evolution.y <= 0.0001) return radiusA;
+
+  float familyB = mod(familyA + 1.0, 5.0);
+  float radiusB = curatedFamilyRadius(
+    familyB,
+    theta,
+    baseRadius,
+    layer,
+    phase
+  );
+  return mix(radiusA, radiusB, evolution.y);
+}
+
+float radialContourSDF(
+  float rho,
+  float targetRadius,
+  float localZ,
+  float layerZ,
+  float radialThickness,
+  float depthThickness
+) {
+  return sdBox2D(
+    vec2(rho - targetRadius, localZ - layerZ),
+    vec2(radialThickness, depthThickness)
+  );
 }
 
 vec2 tunnelSDF(vec3 p) {
@@ -125,99 +265,110 @@ vec2 tunnelSDF(vec3 p) {
   float tz = p.z + uTravel;
   float cellId = floor(tz / CELL_LENGTH);
   float lz = tz - cellId * CELL_LENGTH - 0.5 * CELL_LENGTH;
-
-  float h1 = hash11(cellId);
-  float h2 = hash11(cellId + 31.7);
-  float h3 = hash11(cellId + 67.4);
   float parity = mod(cellId, 2.0);
   float direction = mix(-1.0, 1.0, parity);
+  float journeyPhase = clamp((uSymmetry - 6.0) / 6.0, 0.0, 1.0);
+  vec2 evolution = familyEvolution(journeyPhase);
 
-  float symmetryPhase = clamp((uSymmetry - 6.0) / 6.0, 0.0, 1.0);
-  float symmetry = symmetryCount(symmetryPhase);
-  float sector = TWO_PI / symmetry;
-
-  // Near arches sit farther out to frame the viewport; distant cells become
-  // slightly smaller and thinner, concentrating detail at the vanishing point.
+  float rho = length(p.xy);
+  float theta = atan(p.y, p.x);
   float viewDepth = clamp(-p.z / MAX_RAY_DISTANCE, 0.0, 1.0);
   float depthEase = smoothstep(0.0, 1.0, viewDepth);
-  float depthScale = mix(1.14, 0.86, depthEase);
+  // Large near contours frame the viewport; distant mathematics become
+  // progressively smaller and denser around the vanishing point.
+  float depthScale = mix(1.16, 0.84, depthEase);
   float thicknessScale = mix(1.0, 0.72, depthEase);
-  float cellRadiusScale = 0.94 + 0.12 * h2;
-  float zOffset = (h3 - 0.5) * 0.2 + (parity - 0.5) * 0.08;
-  float cellRotation = (h1 - 0.5) * sector * 0.7 + parity * sector * 0.5;
+  float innerThicknessScale = mix(thicknessScale, 1.0, 0.4);
+  float cellSlot = mod(cellId, 5.0);
+  float cellScale = 0.97 + 0.03 * cos(cellSlot * TWO_PI / 5.0);
+  float familyPhase = cellSlot * 0.43 + parity * 0.65;
 
-  // Macro layer: hollow arch contours replace the former solid toroidal tube.
-  vec2 outerXY = rotate2D(
-    p.xy,
-    direction * lz * uTwist + cellRotation
+  // Every layer uses the same curated family for this cell. Frequencies are
+  // exact integer multiples, so the nested composition retains base symmetry.
+  float macroTheta = theta + tz * uTwist;
+  float macroRadius = evolvedFamilyRadius(
+    cellId,
+    evolution,
+    macroTheta,
+    MACRO_RADIUS * depthScale * cellScale,
+    0.0,
+    familyPhase
   );
-  float radius = length(outerXY);
-  float outerAngle = stagedFoldAngle(
-    atan(outerXY.y, outerXY.x),
-    symmetryPhase,
-    1.0
+  float macroZ = direction * (
+    0.42 + 0.02 * cos(cellSlot * TWO_PI / 5.0)
   );
-  float outerRadius = OUTER_RADIUS * cellRadiusScale * depthScale
-    + 0.12 * cos(outerAngle * symmetry + parity * 3.14159265);
-  float archSize = OUTER_ARCH_SIZE * (0.9 + 0.2 * h3);
-  vec2 outerProfile = vec2(
-    radius - outerRadius,
-    (lz + zOffset) * 0.82
+  float macroDistance = radialContourSDF(
+    rho,
+    macroRadius,
+    lz,
+    macroZ,
+    MACRO_THICKNESS * thicknessScale,
+    MACRO_DEPTH_WIDTH * thicknessScale
   );
-  float outerDistance = abs(length(outerProfile) - archSize)
-    - OUTER_THICKNESS * thicknessScale * (0.9 + 0.2 * h2);
 
-  // Mid layer: mirrored diamond contours counter-rotate against the arches.
-  vec2 midXY = rotate2D(
-    p.xy,
-    -direction * lz * uTwist * 1.3
-      - cellRotation * 0.65
-      + parity * sector * 0.25
+  float midTheta = theta - tz * uTwist * 0.8;
+  float midRadius = evolvedFamilyRadius(
+    cellId,
+    evolution,
+    midTheta,
+    MID_RADIUS * depthScale * cellScale,
+    1.0,
+    familyPhase
   );
-  float midRawAngle = atan(midXY.y, midXY.x);
-  float midAngle = stagedFoldAngle(
-    midRawAngle,
-    symmetryPhase,
-    2.0
+  float midDistance = radialContourSDF(
+    rho,
+    midRadius,
+    lz,
+    0.0,
+    MID_THICKNESS * innerThicknessScale,
+    MID_DEPTH_WIDTH * innerThicknessScale
   );
-  vec2 midFolded = vec2(cos(midAngle), sin(midAngle)) * radius;
-  float midRadial = midFolded.x
-    - MID_RADIUS * cellRadiusScale * depthScale;
-  float midZ = lz - zOffset * 0.55;
-  float diamondSize = 0.3 + 0.055 * parity + 0.035 * (h1 - 0.5);
-  float diamondContour = abs(
-    abs(midFolded.y) * 1.2 + abs(midZ) * 0.72 - diamondSize
-  ) * 0.72;
-  float midDistance = length(vec2(midRadial, diamondContour))
-    - MID_THICKNESS * thicknessScale * (0.9 + 0.15 * h3);
+  // Only the macro contour may enter the immediate foreground.
+  midDistance = max(midDistance, p.z + 0.35);
 
-  vec2 scene = vec2(outerDistance, 0.0);
+  vec2 scene = vec2(macroDistance, 0.0);
   if (midDistance < scene.x) scene = vec2(midDistance, 1.0);
 
+  float innerTheta = theta + tz * uTwist * 1.4;
+  float innerRadius = evolvedFamilyRadius(
+    cellId,
+    evolution,
+    innerTheta,
+    INNER_RADIUS * depthScale * cellScale,
+    2.0,
+    familyPhase
+  );
+  float innerDistance = radialContourSDF(
+    rho,
+    innerRadius,
+    lz,
+    -direction * 0.36,
+    INNER_THICKNESS * innerThicknessScale,
+    INNER_DEPTH_WIDTH * innerThicknessScale
+  );
+  innerDistance = max(innerDistance, p.z + 0.65);
+  if (innerDistance < scene.x) scene = vec2(innerDistance, 2.0);
+
   if (uDetail > 0.5) {
-    // Fine layer: cheap abs/add octahedral shells at 3x angular frequency.
-    float fineAngle = stagedFoldAngle(
-      midRawAngle
-        + direction * lz * uTwist * 0.55
-        + parity * sector * 0.18,
-      symmetryPhase,
-      3.0
+    float fineTheta = theta - tz * uTwist * 1.75;
+    float fineRadius = evolvedFamilyRadius(
+      cellId,
+      evolution,
+      fineTheta,
+      FINE_RADIUS * depthScale * cellScale,
+      3.0,
+      familyPhase
     );
-    vec2 fineFolded = vec2(cos(fineAngle), sin(fineAngle)) * radius;
-    vec3 finePoint = vec3(
-      fineFolded.x - FINE_RADIUS * depthScale * (0.96 + 0.08 * h2),
-      fineFolded.y * 1.45,
-      (lz + zOffset * 0.35) * 0.78
+    float fineDistance = radialContourSDF(
+      rho,
+      fineRadius,
+      lz,
+      direction * 0.18,
+      FINE_THICKNESS * innerThicknessScale,
+      FINE_DEPTH_WIDTH * innerThicknessScale
     );
-    float fineSize = 0.19 + 0.03 * h1;
-    float octahedralContour = abs(
-      (abs(finePoint.x) + abs(finePoint.y) + abs(finePoint.z))
-        * 0.57735
-        - fineSize
-    );
-    float fineDistance = octahedralContour
-      - FINE_THICKNESS * thicknessScale;
-    if (fineDistance < scene.x) scene = vec2(fineDistance, 2.0);
+    fineDistance = max(fineDistance, p.z + 0.9);
+    if (fineDistance < scene.x) scene = vec2(fineDistance, 3.0);
   }
 
   return scene;
@@ -328,41 +479,69 @@ void main() {
       + uColorPhase
       + uTime * 0.015;
 
+    float cellTone = hash11(cellId + 91.3);
     vec3 hierarchyColor;
     if (layer < 0.5) {
-      hierarchyColor = vec3(0.08, 0.72, 0.61);
+      hierarchyColor = mix(
+        vec3(0.02, 0.92, 0.68),
+        vec3(0.04, 0.38, 1.0),
+        0.2 + 0.45 * cellTone
+      );
     } else if (layer < 1.5) {
-      hierarchyColor = vec3(0.67, 0.25, 0.94);
+      hierarchyColor = mix(
+        vec3(0.58, 0.08, 1.0),
+        vec3(1.0, 0.05, 0.48),
+        0.25 + 0.5 * cellTone
+      );
+    } else if (layer < 2.5) {
+      hierarchyColor = mix(
+        vec3(1.0, 0.34, 0.04),
+        vec3(1.0, 0.86, 0.16),
+        0.5 + 0.35 * cellTone
+      );
     } else {
-      hierarchyColor = vec3(1.0, 0.63, 0.13);
+      hierarchyColor = mix(
+        vec3(1.0, 0.7, 0.12),
+        vec3(1.0, 0.98, 0.82),
+        0.55 + 0.35 * cellTone
+      );
     }
 
-    vec3 baseCol = mix(hierarchyColor, cosinePalette(paletteT), 0.32);
+    vec3 baseCol = mix(hierarchyColor, cosinePalette(paletteT), 0.16);
     vec3 edgeCol = mix(
       hierarchyColor,
       cosinePalette(paletteT + 0.35),
-      0.45
+      0.25
     );
 
-    // Thin structures read through emissive rims rather than plastic shading.
-    color = baseCol * (0.08 + 0.32 * diff + 0.12 * reverseLight);
-    color += baseCol * rim * 1.42;
-    color += edgeCol * pow(rim, 3.0) * 1.05;
+    // Dark surfaces and brighter rims preserve black between mandala contours.
+    color = baseCol * (0.05 + 0.26 * diff + 0.1 * reverseLight);
+    color += baseCol * rim * 1.55;
+    color += edgeCol * pow(rim, 3.0) * 1.15;
 
-    float fineLayer = step(1.5, layer);
-    float centerPull = exp(-radius * 2.3);
-    color += vec3(1.0, 0.68, 0.16)
+    float innerLayer = step(1.5, layer);
+    float microLayer = step(2.5, layer);
+    float centerPull = exp(-radius * 3.2);
+    color += mix(
+      vec3(1.0, 0.62, 0.1),
+      vec3(1.0, 0.96, 0.74),
+      microLayer
+    )
       * centerPull
-      * (0.08 + 0.24 * fineLayer + 0.12 * rim);
+      * (0.1 + 0.22 * innerLayer + 0.18 * microLayer + 0.14 * rim);
 
-    // Inner/fine surfaces retain more distant light at the focal point.
-    float fogDensity = mix(FOG_DENSITY, 0.055, fineLayer);
+    // Inner rings retain more distant light, reinforcing the central portal.
+    float fogDensity = mix(FOG_DENSITY, 0.052, innerLayer);
+    fogDensity = mix(fogDensity, 0.045, microLayer);
     color *= exp(-fogDensity * t);
     color += hierarchyColor
       * centerPull
       * smoothstep(5.0, 22.0, t)
       * exp(-0.045 * t)
       * 0.08;
+    // Extremely slow luminance breathing keeps a static frame alive without
+    // moving the procedural camera or competing with scroll-driven travel.
+    color *= 0.97 + 0.03 * sin(uTime * 0.16 + cellId * 1.618);
     color *= surfaceCoverage;
   }
 
