@@ -30,6 +30,13 @@ export function sineCycle(progress: number): number {
   return Math.sin(normalized * Math.PI * 2)
 }
 
+export function sineSquaredEnvelope(progress: number): number {
+  const normalized = clamp01(progress)
+  if (normalized === 0 || normalized === 1) return 0
+  const sine = Math.sin(normalized * Math.PI)
+  return sine * sine
+}
+
 export function activeSegmentIndex(
   journeyProgress: number,
   segments: readonly JourneyRange[],

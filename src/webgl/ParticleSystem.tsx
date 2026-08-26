@@ -24,6 +24,7 @@ import {
   activeSegmentIndex,
   segmentProgress,
   sineCycle,
+  sineSquaredEnvelope,
 } from './timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from './timeline/useJourneyScroll'
 
@@ -179,6 +180,8 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
       uPixelRatio: { value: 1 },
       uMorphProgress: { value: 0 },
       uRadialScale: { value: 1 },
+      uDistortionStrength: { value: 0 },
+      uDistortionPhase: { value: 0 },
       uSourceMotionAmplitude: { value: sourceShape.motionAmplitude },
       uTargetMotionAmplitude: { value: targetShape.motionAmplitude },
       uSourceRotationAmount: { value: sourceShape.rotationAmount },
@@ -219,6 +222,13 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
     const fibonacciBreathProgress = segmentProgress(journey, radialEffect)
     material.uniforms.uRadialScale.value =
       1 + radialEffect.amplitude * sineCycle(fibonacciBreathProgress)
+
+    const distortionEffect = particleEffects.sphereFractalDistortion
+    const distortionProgress = segmentProgress(journey, distortionEffect)
+    material.uniforms.uDistortionStrength.value =
+      distortionEffect.maxStrength *
+      sineSquaredEnvelope(distortionProgress)
+    material.uniforms.uDistortionPhase.value = distortionProgress
   })
 
   // Composition bias: the cloud sits slightly right of center,
