@@ -24,6 +24,12 @@ export function segmentProgress(
   return mapRange(journeyProgress, range.start, range.end, 0, 1)
 }
 
+export function sineCycle(progress: number): number {
+  const normalized = clamp01(progress)
+  if (normalized === 0 || normalized === 1) return 0
+  return Math.sin(normalized * Math.PI * 2)
+}
+
 export function activeSegmentIndex(
   journeyProgress: number,
   segments: readonly JourneyRange[],

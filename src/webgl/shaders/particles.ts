@@ -2,6 +2,7 @@ export const particlesVertexShader = /* glsl */ `
 uniform float uTime;
 uniform float uPixelRatio;
 uniform float uMorphProgress;
+uniform float uRadialScale;
 uniform float uSourceMotionAmplitude;
 uniform float uTargetMotionAmplitude;
 uniform float uSourceRotationAmount;
@@ -33,6 +34,9 @@ void main() {
   // Transitional swirl peaks midway and vanishes at both shape endpoints.
   float swirl = max(0.0, sin(uMorphProgress * 3.14159265)) * 0.18;
   base += normalize(base + vec3(0.0001)) * swirl * (0.4 + aSeed);
+
+  // Generic origin-centered deformation track, independent of shape type.
+  base *= uRadialScale;
 
   float rotationAmount = mix(
     uSourceRotationAmount,
