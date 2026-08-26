@@ -2,10 +2,9 @@ import { useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { MathUtils } from 'three'
 import { ParticleSystem } from './ParticleSystem'
-import {
-  useJourneyScroll,
-  type JourneyProgressRef,
-} from './timeline/useJourneyScroll'
+import { CAMERA_BASELINE, CameraRig } from './camera/CameraRig'
+import type { JourneyProgressRef } from './timeline/journeyProgress'
+import { useJourneyScroll } from './timeline/useJourneyScroll'
 
 const JOURNEY_DAMPING = 7
 const ENDPOINT_EPSILON = 0.00001
@@ -55,7 +54,19 @@ export function Experience() {
   return (
     <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
       <Canvas
-        camera={{ position: [0, 0, 5], fov: 45 }}
+        camera={{
+          position: [
+            CAMERA_BASELINE.position.x,
+            CAMERA_BASELINE.position.y,
+            CAMERA_BASELINE.position.z,
+          ],
+          rotation: [
+            CAMERA_BASELINE.rotation.x,
+            CAMERA_BASELINE.rotation.y,
+            CAMERA_BASELINE.rotation.z,
+          ],
+          fov: CAMERA_BASELINE.fov,
+        }}
         dpr={[1, 1.75]}
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
@@ -64,6 +75,7 @@ export function Experience() {
           rawProgress={rawJourneyProgress}
           visualProgress={visualJourneyProgress}
         />
+        <CameraRig journeyProgress={visualJourneyProgress} />
         <ParticleSystem journeyProgress={visualJourneyProgress} />
       </Canvas>
     </div>

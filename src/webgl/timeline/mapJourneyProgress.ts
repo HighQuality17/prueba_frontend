@@ -1,5 +1,6 @@
 import type {
   JourneyRange,
+  PortalFadeEffect,
   SingularityEffect,
 } from './experienceTimeline'
 
@@ -57,6 +58,31 @@ export function smootherstep01(value: number): number {
 
 function mix(from: number, to: number, progress: number): number {
   return from + (to - from) * progress
+}
+
+export function portalParticleOpacity(
+  journeyProgress: number,
+  effect: PortalFadeEffect,
+): number {
+  const { fadeOut, darkHold, restore } = effect.stages
+
+  if (journeyProgress <= fadeOut.start) return 1
+  if (journeyProgress < fadeOut.end) {
+    return mix(
+      1,
+      effect.minimumOpacity,
+      smootherstep01(segmentProgress(journeyProgress, fadeOut)),
+    )
+  }
+  if (journeyProgress <= darkHold.end) return effect.minimumOpacity
+  if (journeyProgress < restore.end) {
+    return mix(
+      effect.minimumOpacity,
+      1,
+      smootherstep01(segmentProgress(journeyProgress, restore)),
+    )
+  }
+  return 1
 }
 
 export function singularityRadialScale(

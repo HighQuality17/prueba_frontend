@@ -233,6 +233,8 @@ void main() {
 `
 
 export const particlesFragmentShader = /* glsl */ `
+uniform float uParticleOpacity;
+
 varying vec3 vColor;
 varying float vTwinkle;
 varying float vRotation;
@@ -263,7 +265,7 @@ void main() {
   float energyBrightness = 1.0 + vEnergy * 0.55;
   gl_FragColor = vec4(
     energyColor * energyBrightness,
-    alpha * vTwinkle
+    alpha * vTwinkle * uParticleOpacity
   );
 }
 `

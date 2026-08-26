@@ -1,12 +1,9 @@
 import { useEffect, useRef } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import type { JourneyProgressRef } from './journeyProgress'
 
 gsap.registerPlugin(ScrollTrigger)
-
-export interface JourneyProgressRef {
-  current: number
-}
 
 /**
  * Owns the single global scroll controller:

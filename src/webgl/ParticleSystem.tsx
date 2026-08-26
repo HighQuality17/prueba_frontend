@@ -22,6 +22,7 @@ import {
 } from './timeline/experienceTimeline'
 import {
   activeSegmentIndex,
+  portalParticleOpacity,
   segmentProgress,
   sineCycle,
   sineSquaredEnvelope,
@@ -32,7 +33,7 @@ import {
   singularitySwirl,
   singularityTurbulence,
 } from './timeline/mapJourneyProgress'
-import type { JourneyProgressRef } from './timeline/useJourneyScroll'
+import type { JourneyProgressRef } from './timeline/journeyProgress'
 
 /*
   Colors come strictly from the design token palette
@@ -194,6 +195,7 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
       uBurstTurbulence: { value: 0 },
       uBurstPhase: { value: 0 },
       uEnergyIntensity: { value: 0 },
+      uParticleOpacity: { value: 1 },
       uSourceMotionAmplitude: { value: sourceShape.motionAmplitude },
       uTargetMotionAmplitude: { value: targetShape.motionAmplitude },
       uSourceRotationAmount: { value: sourceShape.rotationAmount },
@@ -267,6 +269,10 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
     material.uniforms.uEnergyIntensity.value = singularityEnergy(
       singularityProgress,
       singularityEffect,
+    )
+    material.uniforms.uParticleOpacity.value = portalParticleOpacity(
+      journey,
+      particleEffects.portalFade,
     )
   })
 
