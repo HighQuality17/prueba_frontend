@@ -514,31 +514,59 @@ void main() {
       0.25
     );
 
-    // Dark surfaces and brighter rims preserve black between mandala contours.
-    color = baseCol * (0.05 + 0.26 * diff + 0.1 * reverseLight);
-    color += baseCol * rim * 1.55;
-    color += edgeCol * pow(rim, 3.0) * 1.15;
-
+    float middleLayer = step(0.5, layer);
     float innerLayer = step(1.5, layer);
-    float microLayer = step(2.5, layer);
+    float fineLayer = step(2.5, layer);
     float centerPull = exp(-radius * 3.2);
-    color += mix(
+    float rimCore = pow(rim, 4.0);
+
+    // Keep broad surfaces below the bloom threshold. Only narrow hierarchy
+    // edges carry HDR energy, with fine and inner contours brightest.
+    color = baseCol * (0.04 + 0.22 * diff + 0.08 * reverseLight);
+    color += baseCol * rim * (0.42 + 0.08 * middleLayer);
+
+    float hierarchyLight = 0.28
+      + 0.18 * middleLayer
+      + 0.52 * innerLayer
+      + 0.62 * fineLayer;
+    vec3 luminousEdge = mix(
+      edgeCol,
+      vec3(1.0, 0.94, 0.78),
+      0.1 + 0.08 * innerLayer + 0.12 * fineLayer
+    );
+    color += luminousEdge
+      * rimCore
+      * hierarchyLight
+      * (0.65 + 0.35 * uReveal);
+
+    vec3 portalAccent = mix(
       vec3(1.0, 0.62, 0.1),
       vec3(1.0, 0.96, 0.74),
-      microLayer
-    )
+      fineLayer
+    );
+    color += portalAccent
       * centerPull
-      * (0.1 + 0.22 * innerLayer + 0.18 * microLayer + 0.14 * rim);
+      * (0.07 + 0.13 * innerLayer + 0.1 * fineLayer + 0.08 * rim);
+
+    float centerHotspot = centerPull
+      * centerPull
+      * (0.1 + 0.24 * innerLayer + 0.32 * fineLayer)
+      * (0.35 + 0.65 * rimCore);
+    color += mix(portalAccent, vec3(1.0, 0.98, 0.88), 0.65)
+      * centerHotspot
+      * (0.65 + 0.35 * uReveal);
 
     // Inner rings retain more distant light, reinforcing the central portal.
     float fogDensity = mix(FOG_DENSITY, 0.052, innerLayer);
-    fogDensity = mix(fogDensity, 0.045, microLayer);
+    fogDensity = mix(fogDensity, 0.045, fineLayer);
     color *= exp(-fogDensity * t);
-    color += hierarchyColor
+    float distantPortal = smoothstep(5.0, 22.0, t) * exp(-0.045 * t);
+    color += hierarchyColor * centerPull * distantPortal * 0.065;
+    color += vec3(1.0, 0.9, 0.62)
       * centerPull
-      * smoothstep(5.0, 22.0, t)
-      * exp(-0.045 * t)
-      * 0.08;
+      * rimCore
+      * distantPortal
+      * (0.08 * innerLayer + 0.12 * fineLayer);
     // Extremely slow luminance breathing keeps a static frame alive without
     // moving the procedural camera or competing with scroll-driven travel.
     color *= 0.97 + 0.03 * sin(uTime * 0.16 + cellId * 1.618);

@@ -2,6 +2,7 @@ import type {
   JourneyRange,
   PortalFadeEffect,
   SingularityEffect,
+  TunnelBloomEffect,
 } from './experienceTimeline'
 
 export function clamp01(value: number): number {
@@ -75,6 +76,28 @@ export function portalParticleOpacity(
     )
   }
   return effect.minimumOpacity
+}
+
+export function tunnelBloomIntensity(
+  journeyProgress: number,
+  effect: TunnelBloomEffect,
+): number {
+  const { opening, travel } = effect.stages
+
+  if (journeyProgress <= opening.start) return 0
+  if (journeyProgress < opening.end) {
+    return mix(
+      0,
+      effect.openingIntensity,
+      smootherstep01(segmentProgress(journeyProgress, opening)),
+    )
+  }
+
+  return mix(
+    effect.openingIntensity,
+    effect.maxIntensity,
+    smootherstep01(segmentProgress(journeyProgress, travel)),
+  )
 }
 
 export function singularityRadialScale(

@@ -56,6 +56,15 @@ export interface TunnelEffect extends JourneyRange {
   readonly revealFraction: number
 }
 
+export interface TunnelBloomEffect extends JourneyRange {
+  readonly openingIntensity: number
+  readonly maxIntensity: number
+  readonly stages: {
+    readonly opening: JourneyRange
+    readonly travel: JourneyRange
+  }
+}
+
 export interface CameraDiveEffect extends JourneyRange {
   readonly stages: {
     readonly stillness: JourneyRange
@@ -158,6 +167,30 @@ export const worldEffects = {
     revealFraction: 0.3,
   },
 } as const satisfies Record<string, TunnelEffect>
+
+const TUNNEL_REVEAL_END =
+  worldEffects.tunnel.start +
+  (worldEffects.tunnel.end - worldEffects.tunnel.start) *
+    worldEffects.tunnel.revealFraction
+
+export const postEffects = {
+  tunnelBloom: {
+    start: worldEffects.tunnel.start,
+    end: worldEffects.tunnel.end,
+    openingIntensity: 0.24,
+    maxIntensity: 0.68,
+    stages: {
+      opening: {
+        start: worldEffects.tunnel.start,
+        end: TUNNEL_REVEAL_END,
+      },
+      travel: {
+        start: TUNNEL_REVEAL_END,
+        end: worldEffects.tunnel.end,
+      },
+    },
+  },
+} as const satisfies Record<string, TunnelBloomEffect>
 
 export const particleMorphs = [
   {
