@@ -1,10 +1,16 @@
 import { TorusKnotGeometry } from 'three'
 import { generateCloudPositions } from './utils/generateCloudPositions'
+import { generateFibonacciPositions } from './utils/generateFibonacciPositions'
 import { generateHelixPositions } from './utils/generateHelixPositions'
 import { generateMeshSurfacePositions } from './utils/generateMeshSurfacePositions'
 import { generateSpherePositions } from './utils/generateSpherePositions'
 
-export type ParticleShapeId = 'cloud' | 'sphere' | 'helix' | 'torus'
+export type ParticleShapeId =
+  | 'cloud'
+  | 'fibonacci'
+  | 'sphere'
+  | 'helix'
+  | 'torus'
 
 export interface ParticleShape {
   positions: Float32Array
@@ -36,6 +42,11 @@ export function createParticleShapeRegistry(
       positions: generateCloudPositions(count, seed),
       motionAmplitude: 1,
       rotationAmount: 0,
+    },
+    fibonacci: {
+      positions: generateFibonacciPositions(count),
+      motionAmplitude: 0.45,
+      rotationAmount: 0.08,
     },
     sphere: {
       positions: generateSpherePositions(count, seed + 1),

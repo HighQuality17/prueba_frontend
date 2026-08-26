@@ -15,18 +15,25 @@ export interface ParticleMorph extends JourneyRange {
   scroll progress is mapped through these ranges by individual visual systems.
 */
 export const journeyPhases = {
-  cloudToSphere: { start: 0, end: 0.309 },
-  sphereHold: { start: 0.309, end: 0.364 },
-  sphereToHelix: { start: 0.364, end: 0.636 },
-  helixHold: { start: 0.636, end: 0.691 },
-  helixToTorus: { start: 0.691, end: 0.982 },
-  torusHold: { start: 0.982, end: 1 },
+  cloudToFibonacci: { start: 0, end: 0.21 },
+  fibonacciHold: { start: 0.21, end: 0.26 },
+  fibonacciToSphere: { start: 0.26, end: 0.42 },
+  sphereHold: { start: 0.42, end: 0.47 },
+  sphereToHelix: { start: 0.47, end: 0.65 },
+  helixHold: { start: 0.65, end: 0.7 },
+  helixToTorus: { start: 0.7, end: 0.96 },
+  torusHold: { start: 0.96, end: 1 },
 } as const satisfies Record<string, JourneyRange>
 
 export const particleMorphs = [
   {
-    ...journeyPhases.cloudToSphere,
+    ...journeyPhases.cloudToFibonacci,
     from: 'cloud',
+    to: 'fibonacci',
+  },
+  {
+    ...journeyPhases.fibonacciToSphere,
+    from: 'fibonacci',
     to: 'sphere',
   },
   {
