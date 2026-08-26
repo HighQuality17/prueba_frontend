@@ -64,7 +64,7 @@ export function portalParticleOpacity(
   journeyProgress: number,
   effect: PortalFadeEffect,
 ): number {
-  const { fadeOut, darkHold, restore } = effect.stages
+  const { fadeOut } = effect.stages
 
   if (journeyProgress <= fadeOut.start) return 1
   if (journeyProgress < fadeOut.end) {
@@ -74,15 +74,7 @@ export function portalParticleOpacity(
       smootherstep01(segmentProgress(journeyProgress, fadeOut)),
     )
   }
-  if (journeyProgress <= darkHold.end) return effect.minimumOpacity
-  if (journeyProgress < restore.end) {
-    return mix(
-      effect.minimumOpacity,
-      1,
-      smootherstep01(segmentProgress(journeyProgress, restore)),
-    )
-  }
-  return 1
+  return effect.minimumOpacity
 }
 
 export function singularityRadialScale(

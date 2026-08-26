@@ -32,13 +32,28 @@ export interface SingularityEffect extends JourneyRange {
   }
 }
 
+/*
+  Phase 14: the restore stage was replaced by a darkHold that extends to the
+  end of the journey. The ProceduralTunnel owns the screen after the portal,
+  so particles stay dark; legacy helix/torus morphs still run behind it.
+  Scrolling back above fadeOut.start restores particles deterministically.
+*/
 export interface PortalFadeEffect extends JourneyRange {
   readonly minimumOpacity: number
   readonly stages: {
     readonly fadeOut: JourneyRange
     readonly darkHold: JourneyRange
-    readonly restore: JourneyRange
   }
+}
+
+export interface TunnelEffect extends JourneyRange {
+  readonly maxTravelDistance: number
+  readonly symmetryFrom: number
+  readonly symmetryTo: number
+  readonly twistFrom: number
+  readonly twistTo: number
+  /** Portion of the range spent opening the radial portal aperture. */
+  readonly revealFraction: number
 }
 
 export interface CameraDiveEffect extends JourneyRange {
@@ -110,14 +125,13 @@ export const particleEffects = {
     },
   },
   portalFade: {
-    start: journeyPhases.portalDive.start,
-    end: journeyPhases.transitionSilence.end,
+    start: journeyPhases.portalDive.end - 0.02,
+    end: 1,
     minimumOpacity: 0.015,
     stages: {
-      // 0.823 is approximately local progress 0.88 of the camera dive.
-      fadeOut: { start: 0.823, end: journeyPhases.portalDive.end },
-      darkHold: { start: journeyPhases.portalDive.end, end: 0.865 },
-      restore: { start: 0.865, end: journeyPhases.transitionSilence.end },
+      // Crossfades against the tunnel reveal, which begins at the same point.
+      fadeOut: { start: 0.82, end: 0.875 },
+      darkHold: { start: 0.875, end: 1 },
     },
   },
 } as const satisfies Record<
@@ -127,6 +141,23 @@ export const particleEffects = {
   | SingularityEffect
   | PortalFadeEffect
 >
+
+/*
+  Phase 14 world systems. The tunnel starts during the final camera dive so
+  its reveal overlaps the particle fade-out instead of cutting from black.
+*/
+export const worldEffects = {
+  tunnel: {
+    start: 0.82,
+    end: 1,
+    maxTravelDistance: 26,
+    symmetryFrom: 6,
+    symmetryTo: 12,
+    twistFrom: 0.14,
+    twistTo: 0.52,
+    revealFraction: 0.3,
+  },
+} as const satisfies Record<string, TunnelEffect>
 
 export const particleMorphs = [
   {
