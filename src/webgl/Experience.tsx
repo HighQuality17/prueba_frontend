@@ -1,5 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import { ParticleSystem } from './ParticleSystem'
+import { useJourneyScroll } from './timeline/useJourneyScroll'
 
 /**
  * Fixed WebGL layer that lives behind all HTML content.
@@ -8,6 +9,8 @@ import { ParticleSystem } from './ParticleSystem'
  * - DPR capped for performance on high-density screens
  */
 export function Experience() {
+  const journeyProgress = useJourneyScroll()
+
   return (
     <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
       <Canvas
@@ -16,7 +19,7 @@ export function Experience() {
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
       >
-        <ParticleSystem />
+        <ParticleSystem journeyProgress={journeyProgress} />
       </Canvas>
     </div>
   )

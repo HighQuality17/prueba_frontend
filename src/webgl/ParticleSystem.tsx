@@ -1,26 +1,29 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
+  DynamicDrawUsage,
   ShaderMaterial,
-  TorusKnotGeometry,
 } from 'three'
-import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
   particlesVertexShader,
   particlesFragmentShader,
 } from './shaders/particles'
-import { generateCloudPositions } from './utils/generateCloudPositions'
-import { generateSpherePositions } from './utils/generateSpherePositions'
-import { generateHelixPositions } from './utils/generateHelixPositions'
-import { generateMeshSurfacePositions } from './utils/generateMeshSurfacePositions'
-
-// Registered once for the module lifetime; this file owns the only
-// ScrollTrigger usage in the app.
-gsap.registerPlugin(ScrollTrigger)
+import {
+  createParticleShapeRegistry,
+  type ParticleShapeRegistry,
+} from './particleShapeRegistry'
+import {
+  particleMorphs,
+  type ParticleMorph,
+} from './timeline/experienceTimeline'
+import {
+  activeSegmentIndex,
+  segmentProgress,
+} from './timeline/mapJourneyProgress'
+import type { JourneyProgressRef } from './timeline/useJourneyScroll'
 
 /*
   Colors come strictly from the design token palette
@@ -77,39 +80,57 @@ function hexToRgb(hex: string): [number, number, number] {
   ]
 }
 
-export function ParticleSystem() {
+interface ParticleSystemProps {
+  journeyProgress: JourneyProgressRef
+}
+
+function uploadMorphSegment(
+  geometry: BufferGeometry,
+  shapes: ParticleShapeRegistry,
+  segment: ParticleMorph,
+): void {
+  const source = geometry.getAttribute('aPositionSource')
+  const target = geometry.getAttribute('aPositionTarget')
+  const sourceArray = source.array as Float32Array
+  const targetArray = target.array as Float32Array
+
+  sourceArray.set(shapes[segment.from].positions)
+  targetArray.set(shapes[segment.to].positions)
+  source.needsUpdate = true
+  target.needsUpdate = true
+}
+
+export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
   const materialRef = useRef<ShaderMaterial>(null)
 
   const dpr = useThree((state) => state.viewport.dpr)
+  const canvasWidth = useThree((state) => state.size.width)
+  // Select once so viewport resizes never regenerate particle buffers.
+  const particleCountRef = useRef(
+    canvasWidth <= 768 ? PARTICLE_COUNT_MOBILE : PARTICLE_COUNT_DESKTOP,
+  )
+  const particleCount = particleCountRef.current
+  const activeSegmentRef = useRef(0)
+
+  const shapes = useMemo(
+    () => createParticleShapeRegistry(particleCount, POSITION_SEED),
+    [particleCount],
+  )
 
   /*
-    All buffers are generated once and reused for the lifetime of the
-    component; nothing is rebuilt or reallocated per frame.
-
-    `position` holds the organic cloud target; `aPositionSphere` and
-    `aPositionHelix` hold the other two shape targets. Index i corresponds
-    to the same particle in every array, so the GPU can piecewise-mix
-    between all three states per vertex.
+    The CPU registry retains every generated shape, while the GPU geometry
+    exposes only the active source and target. Segment changes copy cached
+    arrays into these two attributes; ordinary scrolling changes uniforms.
   */
   const geometry = useMemo(() => {
-    const isMobile =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(max-width: 768px)').matches
-    const count = isMobile ? PARTICLE_COUNT_MOBILE : PARTICLE_COUNT_DESKTOP
-
-    const cloudPositions = generateCloudPositions(count, POSITION_SEED)
-    const spherePositions = generateSpherePositions(count, POSITION_SEED + 1)
-    const helixPositions = generateHelixPositions(count, POSITION_SEED + 2)
-
-    // One-time mesh surface sampling: elegant torus knot, smooth enough
-    // for even coverage. The source geometry is disposed after sampling.
-    const knotGeometry = new TorusKnotGeometry(1.3, 0.38, 220, 32)
-    const meshPositions = generateMeshSurfacePositions(
-      knotGeometry,
-      count,
-      POSITION_SEED + 3,
+    const count = particleCount
+    const initialSegment = particleMorphs[0]
+    const sourcePositions = new Float32Array(
+      shapes[initialSegment.from].positions,
     )
-    knotGeometry.dispose()
+    const targetPositions = new Float32Array(
+      shapes[initialSegment.to].positions,
+    )
 
     const colors = new Float32Array(count * 3)
     const sizes = new Float32Array(count)
@@ -129,124 +150,68 @@ export function ParticleSystem() {
     }
 
     const geo = new BufferGeometry()
-    geo.setAttribute('position', new BufferAttribute(cloudPositions, 3))
-    geo.setAttribute('aPositionSphere', new BufferAttribute(spherePositions, 3))
-    geo.setAttribute('aPositionHelix', new BufferAttribute(helixPositions, 3))
-    geo.setAttribute('aPositionMesh', new BufferAttribute(meshPositions, 3))
+    geo.setAttribute(
+      'aPositionSource',
+      new BufferAttribute(sourcePositions, 3).setUsage(DynamicDrawUsage),
+    )
+    geo.setAttribute(
+      'aPositionTarget',
+      new BufferAttribute(targetPositions, 3).setUsage(DynamicDrawUsage),
+    )
     geo.setAttribute('aColor', new BufferAttribute(colors, 3))
     geo.setAttribute('aSize', new BufferAttribute(sizes, 1))
     geo.setAttribute('aSeed', new BufferAttribute(seeds, 1))
+    // There is intentionally no built-in `position` attribute; an explicit
+    // draw range lets Three.js draw from the two custom position attributes.
+    geo.setDrawRange(0, count)
     return geo
-  }, [])
+  }, [particleCount, shapes])
 
-  const uniforms = useMemo(
-    () => ({
+  const uniforms = useMemo(() => {
+    const initialSegment = particleMorphs[0]
+    const sourceShape = shapes[initialSegment.from]
+    const targetShape = shapes[initialSegment.to]
+
+    return {
       uTime: { value: 0 },
-      uPixelRatio: { value: dpr },
-      uShapeProgress: { value: 0 },
-    }),
-    [dpr],
-  )
+      uPixelRatio: { value: 1 },
+      uMorphProgress: { value: 0 },
+      uSourceMotionAmplitude: { value: sourceShape.motionAmplitude },
+      uTargetMotionAmplitude: { value: targetShape.motionAmplitude },
+      uSourceRotationAmount: { value: sourceShape.rotationAmount },
+      uTargetRotationAmount: { value: targetShape.rotationAmount },
+    }
+  }, [shapes])
 
-  /*
-    Scroll-driven multi-state morph:
-      uShapeProgress 0.0 = cloud, 1.0 = sphere, 2.0 = helix.
-
-    Two explicitly separated scroll ranges each own one segment of the
-    progress scale. Both use gsap.fromTo() with pinned start values and
-    immediateRender: false on the second, so the triggers can never fight
-    over the uniform or reset each other's state — regardless of creation
-    order or scroll direction. ease: "none" + scrub: true keep the GPU
-    state in direct, reversible correspondence with scroll position.
-
-    All triggers live inside gsap.context() so StrictMode double-mounts
-    and unmounts revert exactly what this component created.
-  */
-  useEffect(() => {
+  useFrame(({ clock }) => {
     const material = materialRef.current
     if (!material) return
 
-    const ctx = gsap.context(() => {
-      // Dev override: VITE_IGNORE_REDUCED_MOTION=true allows testing the
-      // scroll morph locally even when the OS disables animations.
-      const prefersReducedMotion = window.matchMedia(
-        '(prefers-reduced-motion: reduce)',
-      ).matches
-      const ignoreReducedMotion =
-        import.meta.env.VITE_IGNORE_REDUCED_MOTION === 'true'
-      const shouldReduceMotion = prefersReducedMotion && !ignoreReducedMotion
+    const journey = journeyProgress.current
+    const segmentIndex = activeSegmentIndex(journey, particleMorphs)
 
-      if (shouldReduceMotion) {
-        // Reduced motion: hold one stable state (the organic cloud).
-        material.uniforms.uShapeProgress.value = 0
-        return
-      }
+    if (segmentIndex !== activeSegmentRef.current) {
+      const segment = particleMorphs[segmentIndex]
+      const sourceShape = shapes[segment.from]
+      const targetShape = shapes[segment.to]
 
-      const shapeProgress = material.uniforms.uShapeProgress
-
-      // Range A: cloud -> sphere across the Manifesto section approach.
-      gsap.fromTo(
-        shapeProgress,
-        { value: 0 },
-        {
-          value: 1,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: '#manifesto',
-            start: 'top bottom',
-            end: '+=200%',
-            scrub: true,
-          },
-        },
-      )
-
-      // Range B: sphere -> helix across the Practice section approach.
-      gsap.fromTo(
-        shapeProgress,
-        { value: 1 },
-        {
-          value: 2,
-          ease: 'none',
-          immediateRender: false,
-          scrollTrigger: {
-            trigger: '#practice',
-            start: 'top bottom',
-            end: '+=150%',
-            scrub: true,
-          },
-        },
-      )
-
-      // Range C: helix -> torus knot across the closing CTA approach.
-      gsap.fromTo(
-        shapeProgress,
-        { value: 2 },
-        {
-          value: 3,
-          ease: 'none',
-          immediateRender: false,
-          scrollTrigger: {
-            trigger: '#join',
-            start: 'top bottom',
-            end: '+=160%',
-            scrub: true,
-          },
-        },
-      )
-
-      // Single intentional refresh once webfonts settle the layout.
-      document.fonts?.ready.then(() => ScrollTrigger.refresh())
-    })
-
-    return () => {
-      ctx.revert()
+      uploadMorphSegment(geometry, shapes, segment)
+      material.uniforms.uSourceMotionAmplitude.value =
+        sourceShape.motionAmplitude
+      material.uniforms.uTargetMotionAmplitude.value =
+        targetShape.motionAmplitude
+      material.uniforms.uSourceRotationAmount.value = sourceShape.rotationAmount
+      material.uniforms.uTargetRotationAmount.value = targetShape.rotationAmount
+      activeSegmentRef.current = segmentIndex
     }
-  }, [])
 
-  useFrame(({ clock }) => {
-    if (!materialRef.current) return
-    // The only per-frame work: advance shader time on the GPU.
-    materialRef.current.uniforms.uTime.value = clock.elapsedTime
+    const activeSegment = particleMorphs[segmentIndex]
+    material.uniforms.uTime.value = clock.elapsedTime
+    material.uniforms.uPixelRatio.value = dpr
+    material.uniforms.uMorphProgress.value = segmentProgress(
+      journey,
+      activeSegment,
+    )
   })
 
   // Composition bias: the cloud sits slightly right of center,
