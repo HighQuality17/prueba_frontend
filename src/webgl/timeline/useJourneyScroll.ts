@@ -10,11 +10,12 @@ export interface JourneyProgressRef {
 
 /**
  * Owns the single global scroll controller:
- * document scroll -> normalized journey progress -> visual timeline mappings.
- * The returned object is stable and mutates without causing React renders.
+ * document scroll -> normalized raw journey target.
+ * The returned object is stable and mutates without causing React renders;
+ * Experience smooths it once before sharing visual progress with WebGL systems.
  */
 export function useJourneyScroll(): JourneyProgressRef {
-  const journeyProgress = useRef(0)
+  const rawJourneyProgress = useRef(0)
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia(
@@ -24,7 +25,7 @@ export function useJourneyScroll(): JourneyProgressRef {
       import.meta.env.VITE_IGNORE_REDUCED_MOTION === 'true'
 
     if (prefersReducedMotion && !ignoreReducedMotion) {
-      journeyProgress.current = 0
+      rawJourneyProgress.current = 0
       return
     }
 
@@ -34,10 +35,10 @@ export function useJourneyScroll(): JourneyProgressRef {
       end: () => ScrollTrigger.maxScroll(window),
       invalidateOnRefresh: true,
       onUpdate: (self) => {
-        journeyProgress.current = self.progress
+        rawJourneyProgress.current = self.progress
       },
       onRefresh: (self) => {
-        journeyProgress.current = self.progress
+        rawJourneyProgress.current = self.progress
       },
     })
 
@@ -52,5 +53,5 @@ export function useJourneyScroll(): JourneyProgressRef {
     }
   }, [])
 
-  return journeyProgress
+  return rawJourneyProgress
 }
