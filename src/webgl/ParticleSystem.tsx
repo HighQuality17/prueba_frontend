@@ -25,6 +25,12 @@ import {
   segmentProgress,
   sineCycle,
   sineSquaredEnvelope,
+  singularityBurstDistance,
+  singularityEnergy,
+  singularityRadialScale,
+  singularityScatter,
+  singularitySwirl,
+  singularityTurbulence,
 } from './timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from './timeline/useJourneyScroll'
 
@@ -182,6 +188,12 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
       uRadialScale: { value: 1 },
       uDistortionStrength: { value: 0 },
       uDistortionPhase: { value: 0 },
+      uBurstDistance: { value: 0 },
+      uBurstScatter: { value: 0 },
+      uBurstSwirl: { value: 0 },
+      uBurstTurbulence: { value: 0 },
+      uBurstPhase: { value: 0 },
+      uEnergyIntensity: { value: 0 },
       uSourceMotionAmplitude: { value: sourceShape.motionAmplitude },
       uTargetMotionAmplitude: { value: targetShape.motionAmplitude },
       uSourceRotationAmount: { value: sourceShape.rotationAmount },
@@ -220,7 +232,7 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
     )
     const radialEffect = particleEffects.fibonacciBreath
     const fibonacciBreathProgress = segmentProgress(journey, radialEffect)
-    material.uniforms.uRadialScale.value =
+    const fibonacciScale =
       1 + radialEffect.amplitude * sineCycle(fibonacciBreathProgress)
 
     const distortionEffect = particleEffects.sphereFractalDistortion
@@ -229,6 +241,33 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
       distortionEffect.maxStrength *
       sineSquaredEnvelope(distortionProgress)
     material.uniforms.uDistortionPhase.value = distortionProgress
+
+    const singularityEffect = particleEffects.singularityBurst
+    const singularityProgress = segmentProgress(journey, singularityEffect)
+    material.uniforms.uRadialScale.value =
+      fibonacciScale *
+      singularityRadialScale(singularityProgress, singularityEffect)
+    material.uniforms.uBurstDistance.value = singularityBurstDistance(
+      singularityProgress,
+      singularityEffect,
+    )
+    material.uniforms.uBurstScatter.value = singularityScatter(
+      singularityProgress,
+      singularityEffect,
+    )
+    material.uniforms.uBurstSwirl.value = singularitySwirl(
+      singularityProgress,
+      singularityEffect,
+    )
+    material.uniforms.uBurstTurbulence.value = singularityTurbulence(
+      singularityProgress,
+      singularityEffect,
+    )
+    material.uniforms.uBurstPhase.value = singularityProgress
+    material.uniforms.uEnergyIntensity.value = singularityEnergy(
+      singularityProgress,
+      singularityEffect,
+    )
   })
 
   // Composition bias: the cloud sits slightly right of center,

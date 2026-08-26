@@ -5,6 +5,12 @@ uniform float uMorphProgress;
 uniform float uRadialScale;
 uniform float uDistortionStrength;
 uniform float uDistortionPhase;
+uniform float uBurstDistance;
+uniform float uBurstScatter;
+uniform float uBurstSwirl;
+uniform float uBurstTurbulence;
+uniform float uBurstPhase;
+uniform float uEnergyIntensity;
 uniform float uSourceMotionAmplitude;
 uniform float uTargetMotionAmplitude;
 uniform float uSourceRotationAmount;
@@ -19,12 +25,29 @@ attribute vec3 aColor;
 varying vec3 vColor;
 varying float vTwinkle;
 varying float vRotation;
+varying float vEnergy;
 
 // Rotate a vector around the Y axis.
 vec3 rotateY(vec3 v, float a) {
   float c = cos(a);
   float s = sin(a);
   return vec3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
+}
+
+vec3 safeNormalize(vec3 v) {
+  return v / max(length(v), 0.0001);
+}
+
+vec3 rotateAroundAxis(vec3 v, vec3 axis, float angle) {
+  float c = cos(angle);
+  float s = sin(angle);
+  return v * c
+    + cross(axis, v) * s
+    + axis * dot(axis, v) * (1.0 - c);
+}
+
+float hash11(float value) {
+  return fract(sin(value) * 43758.5453);
 }
 
 float hash31(vec3 p) {
@@ -74,12 +97,14 @@ float fbm(vec3 p) {
 void main() {
   vColor = aColor;
   vRotation = aSeed * 6.2831853;
+  vEnergy = uEnergyIntensity;
 
   vec3 base = mix(aPositionSource, aPositionTarget, uMorphProgress);
 
   // Transitional swirl peaks midway and vanishes at both shape endpoints.
   float swirl = max(0.0, sin(uMorphProgress * 3.14159265)) * 0.18;
-  base += normalize(base + vec3(0.0001)) * swirl * (0.4 + aSeed);
+  base += safeNormalize(base + vec3(0.0001)) * swirl * (0.4 + aSeed);
+  vec3 structuralDirection = safeNormalize(base);
 
   // Generic origin-centered deformation track, independent of shape type.
   base *= uRadialScale;
@@ -114,6 +139,69 @@ void main() {
     base += tangentDirection * foldField * uDistortionStrength * 0.22;
   }
 
+  if (
+    uBurstDistance > 0.0
+    || uBurstSwirl > 0.0
+    || uBurstTurbulence > 0.0
+  ) {
+    float directionX = hash11(aSeed * 127.1 + 11.7) * 2.0 - 1.0;
+    float directionY = hash11(aSeed * 269.5 + 37.3) * 2.0 - 1.0;
+    float directionZ = hash11(aSeed * 419.2 + 73.9) * 2.0 - 1.0;
+    vec3 seedDirection = safeNormalize(
+      vec3(directionX, directionY, directionZ) + vec3(0.0001)
+    );
+    float travelHash = hash11(aSeed * 631.7 + 19.1);
+    float travelVariation = mix(
+      0.45,
+      1.15,
+      smoothstep(0.0, 1.0, travelHash)
+    );
+
+    vec3 burstDirection = safeNormalize(mix(
+      structuralDirection,
+      seedDirection,
+      uBurstScatter * 0.72
+    ));
+    base += burstDirection * uBurstDistance * travelVariation;
+
+    vec3 stableAxis = safeNormalize(
+      seedDirection.yzx + vec3(0.23, 0.51, 0.37)
+    );
+    float angularVariation = mix(
+      0.65,
+      1.35,
+      hash11(aSeed * 947.3 + 41.0)
+    );
+    base = rotateAroundAxis(
+      base,
+      stableAxis,
+      uBurstSwirl * 3.4 * angularVariation
+    );
+
+    vec3 chargeTangent = safeNormalize(
+      cross(structuralDirection, stableAxis)
+    );
+    base += chargeTangent
+      * uBurstSwirl
+      * 0.1
+      * (0.5 + 0.5 * travelHash);
+
+    if (uBurstTurbulence > 0.0) {
+      vec3 turbulenceDirection = safeNormalize(vec3(
+        sin(structuralDirection.y * 5.1 + uBurstPhase * 12.0),
+        sin(structuralDirection.z * 4.7 - uBurstPhase * 9.0),
+        sin(structuralDirection.x * 5.3 + uBurstPhase * 10.0)
+      ));
+      base += turbulenceDirection
+        * uBurstTurbulence
+        * (0.55 + 0.45 * travelHash);
+    }
+
+    // Keep the large burst legible in the camera plane and away from the
+    // camera itself while scatter is strongest.
+    base.z *= mix(1.0, 0.62, uBurstScatter);
+  }
+
   float rotationAmount = mix(
     uSourceRotationAmount,
     uTargetRotationAmount,
@@ -136,7 +224,8 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPosition;
 
-  gl_PointSize = aSize * uPixelRatio * (10.0 / -mvPosition.z);
+  float energySize = 1.0 + uEnergyIntensity * 0.6;
+  gl_PointSize = aSize * energySize * uPixelRatio * (10.0 / -mvPosition.z);
 
   // Gentle asynchronous brightness breathing.
   vTwinkle = 0.75 + 0.25 * sin(t * 1.4 + aSeed * 40.0);
@@ -147,6 +236,7 @@ export const particlesFragmentShader = /* glsl */ `
 varying vec3 vColor;
 varying float vTwinkle;
 varying float vRotation;
+varying float vEnergy;
 
 // Signed distance to an equilateral triangle (circumradius ~1, centered).
 float triangleDistance(vec2 p) {
@@ -169,6 +259,11 @@ void main() {
   float alpha = 1.0 - smoothstep(-0.08, 0.08, d);
   if (alpha < 0.01) discard;
 
-  gl_FragColor = vec4(vColor, alpha * vTwinkle);
+  vec3 energyColor = mix(vColor, vec3(1.0), vEnergy * 0.32);
+  float energyBrightness = 1.0 + vEnergy * 0.55;
+  gl_FragColor = vec4(
+    energyColor * energyBrightness,
+    alpha * vTwinkle
+  );
 }
 `
