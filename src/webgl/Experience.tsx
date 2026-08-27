@@ -1,5 +1,5 @@
-import { useRef } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useEffect, useRef } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { MathUtils } from 'three'
 import { ParticleSystem } from './ParticleSystem'
 import { CAMERA_BASELINE, CameraRig } from './camera/CameraRig'
@@ -11,6 +11,45 @@ import { useJourneyScroll } from './timeline/useJourneyScroll'
 const JOURNEY_DAMPING = 7
 const ENDPOINT_EPSILON = 0.00001
 const SETTLE_EPSILON = 0.000001
+const TARGET_RENDER_FPS = 60
+const TARGET_FRAME_INTERVAL_MS = 1000 / TARGET_RENDER_FPS
+
+function RenderCadenceController() {
+  const advance = useThree((state) => state.advance)
+
+  useEffect(() => {
+    let animationFrameId = 0
+    let startTime: number | null = null
+    let previousRafTime: number | null = null
+    let accumulatedTime = 0
+
+    const tick = (timestamp: number) => {
+      animationFrameId = requestAnimationFrame(tick)
+
+      if (startTime === null || previousRafTime === null) {
+        startTime = timestamp
+        previousRafTime = timestamp
+        advance(0)
+        return
+      }
+
+      accumulatedTime += timestamp - previousRafTime
+      previousRafTime = timestamp
+
+      if (accumulatedTime < TARGET_FRAME_INTERVAL_MS) return
+
+      // Preserve sub-frame excess without issuing catch-up render bursts.
+      accumulatedTime %= TARGET_FRAME_INTERVAL_MS
+      advance((timestamp - startTime) / 1000)
+    }
+
+    animationFrameId = requestAnimationFrame(tick)
+
+    return () => cancelAnimationFrame(animationFrameId)
+  }, [advance])
+
+  return null
+}
 
 interface JourneyProgressSmootherProps {
   rawProgress: JourneyProgressRef
@@ -56,6 +95,7 @@ export function Experience() {
   return (
     <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
       <Canvas
+        frameloop="never"
         camera={{
           position: [
             CAMERA_BASELINE.position.x,
@@ -73,6 +113,7 @@ export function Experience() {
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
       >
+        <RenderCadenceController />
         <JourneyProgressSmoother
           rawProgress={rawJourneyProgress}
           visualProgress={visualJourneyProgress}

@@ -59,6 +59,7 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
       uSymmetry: { value: worldEffects.tunnel.symmetryFrom },
       uTwist: { value: worldEffects.tunnel.twistFrom },
       uColorPhase: { value: 0 },
+      uSpectralProgress: { value: 0 },
       uStepLimit: {
         value: isMobileRef.current
           ? RAYMARCH_STEPS_MOBILE
@@ -112,6 +113,7 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
     )
     u.uTwist.value = mix(effect.twistFrom, effect.twistTo, local)
     u.uColorPhase.value = local * 0.65
+    u.uSpectralProgress.value = smootherstep01(local)
   })
 
   /*

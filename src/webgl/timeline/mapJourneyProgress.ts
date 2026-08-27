@@ -1,4 +1,5 @@
 import type {
+  ChromaticAberrationTimeline,
   JourneyRange,
   PortalFadeEffect,
   SingularityEffect,
@@ -97,6 +98,53 @@ export function tunnelBloomIntensity(
     effect.openingIntensity,
     effect.maxIntensity,
     smootherstep01(segmentProgress(journeyProgress, travel)),
+  )
+}
+
+export function chromaticAberrationOffset(
+  journeyProgress: number,
+  effect: ChromaticAberrationTimeline,
+): number {
+  const { intro, build, peak, settle } = effect.stages
+
+  if (journeyProgress <= intro.start) return 0
+  if (journeyProgress < intro.end) {
+    return mix(
+      0,
+      effect.introOffset,
+      smootherstep01(segmentProgress(journeyProgress, intro)),
+    )
+  }
+  if (journeyProgress < build.end) {
+    return mix(
+      effect.introOffset,
+      effect.middleOffset,
+      smootherstep01(segmentProgress(journeyProgress, build)),
+    )
+  }
+  if (journeyProgress < peak.end) {
+    return mix(
+      effect.middleOffset,
+      effect.maxOffset,
+      smootherstep01(segmentProgress(journeyProgress, peak)),
+    )
+  }
+
+  return mix(
+    effect.maxOffset,
+    effect.endOffset,
+    smootherstep01(segmentProgress(journeyProgress, settle)),
+  )
+}
+
+export function chromaticAberrationDirection(
+  journeyProgress: number,
+  effect: ChromaticAberrationTimeline,
+): number {
+  return mix(
+    effect.directionFrom,
+    effect.directionTo,
+    smootherstep01(segmentProgress(journeyProgress, effect)),
   )
 }
 

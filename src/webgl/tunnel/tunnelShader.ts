@@ -37,6 +37,7 @@ uniform float uTravel;
 uniform float uSymmetry;
 uniform float uTwist;
 uniform float uColorPhase;
+uniform float uSpectralProgress;
 uniform float uStepLimit;
 uniform float uDetail;
 
@@ -63,10 +64,6 @@ uniform float uDetail;
 #define MAX_RAY_DISTANCE 30.0
 #define FOG_DENSITY 0.1
 #define APERTURE_MAX 2.6
-
-float hash11(float n) {
-  return fract(sin(n * 127.1) * 43758.5453);
-}
 
 float sdBox2D(vec2 p, vec2 halfSize) {
   vec2 q = abs(p) - halfSize;
@@ -473,45 +470,74 @@ void main() {
 
     float radius = length(pos.xy);
     float cellId = floor((pos.z + uTravel) / CELL_LENGTH);
-    float paletteT = hash11(cellId) * 0.22
+    float paletteT = (pos.z + uTravel) * 0.035
       + radius * 0.12
-      + pos.z * 0.03
-      + uColorPhase
-      + uTime * 0.015;
+      + layer * 0.09
+      + uColorPhase;
+    float depthTone = 0.5 + 0.5 * cos(
+      (pos.z + uTravel) * 0.24 + radius * 0.7 + layer * 1.13
+    );
 
-    float cellTone = hash11(cellId + 91.3);
-    vec3 hierarchyColor;
+    vec3 cyan = vec3(0.02, 0.92, 0.68);
+    vec3 electricBlue = vec3(0.04, 0.38, 1.0);
+    vec3 violet = vec3(0.58, 0.08, 1.0);
+    vec3 magenta = vec3(1.0, 0.05, 0.48);
+    vec3 orange = vec3(1.0, 0.34, 0.04);
+    vec3 yellow = vec3(1.0, 0.86, 0.16);
+    vec3 warmWhite = vec3(1.0, 0.98, 0.82);
+
+    vec3 earlyColor;
+    vec3 middleColor;
+    vec3 deepColor;
+    vec3 deepestColor;
     if (layer < 0.5) {
-      hierarchyColor = mix(
-        vec3(0.02, 0.92, 0.68),
-        vec3(0.04, 0.38, 1.0),
-        0.2 + 0.45 * cellTone
-      );
+      earlyColor = mix(cyan, electricBlue, 0.2 + 0.35 * depthTone);
+      middleColor = mix(electricBlue, violet, 0.2 + 0.35 * depthTone);
+      deepColor = mix(violet, magenta, 0.15 + 0.3 * depthTone);
+      deepestColor = mix(cyan, magenta, 0.28 + 0.35 * depthTone);
     } else if (layer < 1.5) {
-      hierarchyColor = mix(
-        vec3(0.58, 0.08, 1.0),
-        vec3(1.0, 0.05, 0.48),
-        0.25 + 0.5 * cellTone
-      );
+      earlyColor = mix(violet, cyan, 0.08 + 0.12 * depthTone);
+      middleColor = mix(violet, magenta, 0.35 + 0.3 * depthTone);
+      deepColor = mix(magenta, orange, 0.08 + 0.18 * depthTone);
+      deepestColor = mix(magenta, orange, 0.15 + 0.25 * depthTone);
     } else if (layer < 2.5) {
-      hierarchyColor = mix(
-        vec3(1.0, 0.34, 0.04),
-        vec3(1.0, 0.86, 0.16),
-        0.5 + 0.35 * cellTone
-      );
+      earlyColor = mix(electricBlue, violet, 0.35 + 0.25 * depthTone);
+      middleColor = mix(violet, magenta, 0.45 + 0.25 * depthTone);
+      deepColor = mix(magenta, orange, 0.38 + 0.28 * depthTone);
+      deepestColor = mix(orange, yellow, 0.5 + 0.3 * depthTone);
     } else {
-      hierarchyColor = mix(
-        vec3(1.0, 0.7, 0.12),
-        vec3(1.0, 0.98, 0.82),
-        0.55 + 0.35 * cellTone
-      );
+      earlyColor = mix(yellow, warmWhite, 0.45 + 0.2 * depthTone);
+      middleColor = mix(magenta, warmWhite, 0.5 + 0.2 * depthTone);
+      deepColor = mix(yellow, warmWhite, 0.58 + 0.2 * depthTone);
+      deepestColor = mix(yellow, warmWhite, 0.72 + 0.18 * depthTone);
     }
 
-    vec3 baseCol = mix(hierarchyColor, cosinePalette(paletteT), 0.16);
+    vec3 hierarchyColor = mix(
+      earlyColor,
+      middleColor,
+      smoothstep(0.12, 0.58, uSpectralProgress)
+    );
+    hierarchyColor = mix(
+      hierarchyColor,
+      deepColor,
+      smoothstep(0.48, 0.86, uSpectralProgress)
+    );
+    hierarchyColor = mix(
+      hierarchyColor,
+      deepestColor,
+      smoothstep(0.78, 1.0, uSpectralProgress)
+    );
+
+    float paletteInfluence = mix(0.1, 0.17, uSpectralProgress);
+    vec3 baseCol = mix(
+      hierarchyColor,
+      cosinePalette(paletteT),
+      paletteInfluence
+    );
     vec3 edgeCol = mix(
       hierarchyColor,
       cosinePalette(paletteT + 0.35),
-      0.25
+      0.2 + 0.06 * uSpectralProgress
     );
 
     float middleLayer = step(0.5, layer);
@@ -529,9 +555,14 @@ void main() {
       + 0.18 * middleLayer
       + 0.52 * innerLayer
       + 0.62 * fineLayer;
+    vec3 spectralHighlight = mix(
+      vec3(0.72, 0.92, 1.0),
+      vec3(1.0, 0.94, 0.78),
+      smoothstep(0.35, 0.9, uSpectralProgress)
+    );
     vec3 luminousEdge = mix(
       edgeCol,
-      vec3(1.0, 0.94, 0.78),
+      spectralHighlight,
       0.1 + 0.08 * innerLayer + 0.12 * fineLayer
     );
     color += luminousEdge
@@ -539,10 +570,13 @@ void main() {
       * hierarchyLight
       * (0.65 + 0.35 * uReveal);
 
-    vec3 portalAccent = mix(
-      vec3(1.0, 0.62, 0.1),
-      vec3(1.0, 0.96, 0.74),
-      fineLayer
+    vec3 portalAccent = mix(orange, yellow, uSpectralProgress);
+    portalAccent = mix(portalAccent, warmWhite, fineLayer);
+    portalAccent = mix(
+      portalAccent,
+      warmWhite,
+      smoothstep(0.78, 1.0, uSpectralProgress)
+        * (0.25 + 0.75 * fineLayer)
     );
     color += portalAccent
       * centerPull
@@ -562,7 +596,12 @@ void main() {
     color *= exp(-fogDensity * t);
     float distantPortal = smoothstep(5.0, 22.0, t) * exp(-0.045 * t);
     color += hierarchyColor * centerPull * distantPortal * 0.065;
-    color += vec3(1.0, 0.9, 0.62)
+    vec3 distantCoreColor = mix(
+      vec3(0.42, 0.82, 1.0),
+      vec3(1.0, 0.9, 0.62),
+      smoothstep(0.38, 0.9, uSpectralProgress)
+    );
+    color += distantCoreColor
       * centerPull
       * rimCore
       * distantPortal

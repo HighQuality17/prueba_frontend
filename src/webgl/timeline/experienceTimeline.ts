@@ -65,6 +65,21 @@ export interface TunnelBloomEffect extends JourneyRange {
   }
 }
 
+export interface ChromaticAberrationTimeline extends JourneyRange {
+  readonly introOffset: number
+  readonly middleOffset: number
+  readonly maxOffset: number
+  readonly endOffset: number
+  readonly directionFrom: number
+  readonly directionTo: number
+  readonly stages: {
+    readonly intro: JourneyRange
+    readonly build: JourneyRange
+    readonly peak: JourneyRange
+    readonly settle: JourneyRange
+  }
+}
+
 export interface CameraDiveEffect extends JourneyRange {
   readonly stages: {
     readonly stillness: JourneyRange
@@ -190,7 +205,26 @@ export const postEffects = {
       },
     },
   },
-} as const satisfies Record<string, TunnelBloomEffect>
+  chromaticAberration: {
+    start: worldEffects.tunnel.start,
+    end: worldEffects.tunnel.end,
+    introOffset: 0.00006,
+    middleOffset: 0.00025,
+    maxOffset: 0.00062,
+    endOffset: 0.00048,
+    directionFrom: 0.35,
+    directionTo: -0.18,
+    stages: {
+      intro: { start: worldEffects.tunnel.start, end: 0.88 },
+      build: { start: 0.88, end: 0.93 },
+      peak: { start: 0.93, end: 0.97 },
+      settle: { start: 0.97, end: worldEffects.tunnel.end },
+    },
+  },
+} as const satisfies Record<
+  string,
+  TunnelBloomEffect | ChromaticAberrationTimeline
+>
 
 export const particleMorphs = [
   {
