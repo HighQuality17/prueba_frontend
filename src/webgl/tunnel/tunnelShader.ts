@@ -17,9 +17,10 @@
   - FOG_DENSITY 0.1        exponential distance fog toward black
 
   Per pixel cost: <= uStepLimit map evaluations. Stable journey stages evaluate
-  three mathematical radii on mobile and four on desktop; two short family
-  transitions evaluate both adjacent curated families. Confirmed hits add 2
-  mobile / 3 desktop refinements and 4 evaluations for the normal.
+  three mathematical radii on mobile and four on desktop, plus one shared core
+  contour late in the journey and one desktop membrane contour. Two short
+  family transitions evaluate both adjacent curated families. Confirmed hits
+  add 2 mobile / 3 desktop refinements and 4 evaluations for the normal.
 */
 
 export const tunnelVertexShader = /* glsl */ `
@@ -38,6 +39,11 @@ uniform float uSymmetry;
 uniform float uTwist;
 uniform float uColorPhase;
 uniform float uSpectralProgress;
+uniform float uOrganicStrength;
+uniform float uCellularStrength;
+uniform float uOrganicCore;
+uniform float uOrganicPulse;
+uniform float uOrganicAsymmetry;
 uniform float uStepLimit;
 uniform float uDetail;
 
@@ -280,6 +286,42 @@ vec2 tunnelSDF(vec3 p) {
   float cellScale = 0.97 + 0.03 * cos(cellSlot * TWO_PI / 5.0);
   float familyPhase = cellSlot * 0.43 + parity * 0.65;
 
+  float organicDepth = 0.0;
+  float cellularDepth = 0.0;
+  float coreDepth = 0.0;
+  float organicLobe = 0.0;
+  float cellSignal = 0.0;
+  float fiberWave = 0.0;
+  float asymmetry = 0.0;
+  if (uOrganicStrength > 0.0001) {
+    organicDepth = uOrganicStrength * mix(0.35, 1.0, depthEase);
+    cellularDepth = uCellularStrength
+      * smoothstep(0.02, 0.42, viewDepth);
+    coreDepth = uOrganicCore * smoothstep(0.03, 0.48, viewDepth);
+
+    // One harmonic lobe field supplies membrane, cellular, and fiber detail.
+    // Mobile keeps only its strong 6-fold fundamental.
+    float zPhase = direction * tz * 0.58 + familyPhase;
+    float lobePhase = 6.0 * theta + zPhase;
+    organicLobe = sin(lobePhase);
+    if (uDetail > 0.5) {
+      float secondaryLobe = sin(12.0 * theta - 0.7 * zPhase);
+      fiberWave = sin(18.0 * theta + familyPhase + direction * lz * 0.35);
+      organicLobe = (
+        organicLobe + 0.35 * secondaryLobe + 0.15 * fiberWave
+      ) / 1.5;
+    }
+    organicLobe *= uOrganicPulse;
+    float cellCarrier = sin(rho * 7.5 + lz * 1.7 + parity * 1.1);
+    cellSignal = organicLobe * cellCarrier;
+
+    if (uDetail > 0.5) {
+      asymmetry = organicDepth
+        * uOrganicAsymmetry
+        * sin(theta + tz * 0.11 + familyPhase * 0.37);
+    }
+  }
+
   // Every layer uses the same curated family for this cell. Frequencies are
   // exact integer multiples, so the nested composition retains base symmetry.
   float macroTheta = theta + tz * uTwist;
@@ -291,6 +333,9 @@ vec2 tunnelSDF(vec3 p) {
     0.0,
     familyPhase
   );
+  macroRadius *= 1.0
+    + organicDepth * 0.04 * organicLobe
+    + asymmetry * 0.15;
   float macroZ = direction * (
     0.42 + 0.02 * cos(cellSlot * TWO_PI / 5.0)
   );
@@ -299,8 +344,8 @@ vec2 tunnelSDF(vec3 p) {
     macroRadius,
     lz,
     macroZ,
-    MACRO_THICKNESS * thicknessScale,
-    MACRO_DEPTH_WIDTH * thicknessScale
+    MACRO_THICKNESS * thicknessScale * (1.0 + 0.1 * organicDepth),
+    MACRO_DEPTH_WIDTH * thicknessScale * (1.0 + 0.1 * organicDepth)
   );
 
   float midTheta = theta - tz * uTwist * 0.8;
@@ -312,13 +357,17 @@ vec2 tunnelSDF(vec3 p) {
     1.0,
     familyPhase
   );
+  midRadius *= 1.0
+    - organicDepth * 0.07 * organicLobe
+    + cellularDepth * 0.018 * cellSignal
+    + asymmetry * 0.45;
   float midDistance = radialContourSDF(
     rho,
     midRadius,
     lz,
     0.0,
-    MID_THICKNESS * innerThicknessScale,
-    MID_DEPTH_WIDTH * innerThicknessScale
+    MID_THICKNESS * innerThicknessScale * (1.0 + 0.2 * organicDepth),
+    MID_DEPTH_WIDTH * innerThicknessScale * (1.0 + 0.2 * organicDepth)
   );
   // Only the macro contour may enter the immediate foreground.
   midDistance = max(midDistance, p.z + 0.35);
@@ -335,13 +384,22 @@ vec2 tunnelSDF(vec3 p) {
     2.0,
     familyPhase
   );
+  innerRadius *= 1.0
+    + organicDepth * 0.11 * organicLobe
+    + cellularDepth * 0.025 * cellSignal
+    + asymmetry * 0.85;
+  float irisInnerRadius = INNER_RADIUS
+    * depthScale
+    * cellScale
+    * (1.08 + 0.06 * cellSignal);
+  innerRadius = mix(innerRadius, irisInnerRadius, coreDepth * 0.72);
   float innerDistance = radialContourSDF(
     rho,
     innerRadius,
     lz,
     -direction * 0.36,
-    INNER_THICKNESS * innerThicknessScale,
-    INNER_DEPTH_WIDTH * innerThicknessScale
+    INNER_THICKNESS * innerThicknessScale * (1.0 + 0.3 * organicDepth),
+    INNER_DEPTH_WIDTH * innerThicknessScale * (1.0 + 0.3 * organicDepth)
   );
   innerDistance = max(innerDistance, p.z + 0.65);
   if (innerDistance < scene.x) scene = vec2(innerDistance, 2.0);
@@ -356,16 +414,64 @@ vec2 tunnelSDF(vec3 p) {
       3.0,
       familyPhase
     );
+    fineRadius *= 1.0
+      + organicDepth * 0.14 * organicLobe
+      + cellularDepth * (0.025 * cellSignal + 0.018 * fiberWave)
+      + asymmetry;
+    float irisFineRadius = FINE_RADIUS
+      * depthScale
+      * cellScale
+      * (1.3 + 0.08 * cellSignal);
+    fineRadius = mix(fineRadius, irisFineRadius, coreDepth * 0.9);
     float fineDistance = radialContourSDF(
       rho,
       fineRadius,
       lz,
       direction * 0.18,
-      FINE_THICKNESS * innerThicknessScale,
-      FINE_DEPTH_WIDTH * innerThicknessScale
+      FINE_THICKNESS * innerThicknessScale * (1.0 + 0.36 * organicDepth),
+      FINE_DEPTH_WIDTH * innerThicknessScale * (1.0 + 0.36 * organicDepth)
     );
     fineDistance = max(fineDistance, p.z + 0.9);
     if (fineDistance < scene.x) scene = vec2(fineDistance, 3.0);
+  }
+
+  if (uDetail > 0.5 && cellularDepth > 0.0001) {
+    float membraneRadius = mix(midRadius, innerRadius, 0.46)
+      * (
+        1.0
+        + 0.09 * cellSignal
+        + 0.035 * fiberWave
+        + asymmetry
+      );
+    float membraneDistance = radialContourSDF(
+      rho,
+      membraneRadius,
+      lz,
+      -direction * 0.08 + 0.07 * organicLobe,
+      0.05 * innerThicknessScale * (1.0 + 0.18 * fiberWave),
+      0.03 * innerThicknessScale
+    );
+    membraneDistance += (1.0 - cellularDepth) * 0.055;
+    membraneDistance = max(membraneDistance, p.z + 0.55);
+    if (membraneDistance < scene.x) scene = vec2(membraneDistance, 4.0);
+  }
+
+  if (coreDepth > 0.0001) {
+    float livingCoreRadius = 0.12
+      * depthScale
+      * cellScale
+      * (1.0 + 0.15 * organicLobe);
+    float livingCoreDistance = radialContourSDF(
+      rho,
+      livingCoreRadius,
+      lz,
+      direction * 0.06,
+      0.026 * innerThicknessScale,
+      0.018 * innerThicknessScale
+    );
+    livingCoreDistance += (1.0 - coreDepth) * 0.04;
+    livingCoreDistance = max(livingCoreDistance, p.z + 0.75);
+    if (livingCoreDistance < scene.x) scene = vec2(livingCoreDistance, 5.0);
   }
 
   return scene;
@@ -463,14 +569,33 @@ void main() {
     vec3 pos = ro + rd * t;
     vec3 n = calcNormal(pos, t);
     float layer = sceneSample.y;
+    float middleLayer = step(0.5, layer);
+    float innerLayer = step(1.5, layer);
+    float fineLayer = step(2.5, layer);
+    float membraneLayer = step(3.5, layer);
+    float annulusLayer = membraneLayer * (1.0 - step(4.5, layer));
+    float livingCoreLayer = step(4.5, layer);
+    float organicSurface = 0.0;
+    float cellularSurface = 0.0;
+    float coreSurface = 0.0;
+    if (uOrganicStrength > 0.0001) {
+      float surfaceViewDepth = clamp(t / MAX_RAY_DISTANCE, 0.0, 1.0);
+      float surfaceDepth = smoothstep(0.02, 0.55, surfaceViewDepth);
+      organicSurface = uOrganicStrength * mix(0.35, 1.0, surfaceDepth);
+      cellularSurface = uCellularStrength
+        * smoothstep(0.01, 0.42, surfaceViewDepth);
+      coreSurface = uOrganicCore
+        * smoothstep(0.02, 0.45, surfaceViewDepth);
+    }
 
     float diff = max(dot(n, normalize(vec3(0.3, 0.5, 0.75))), 0.0);
     float reverseLight = max(dot(-n, normalize(vec3(-0.5, 0.2, 0.7))), 0.0);
     float rim = pow(1.0 - abs(dot(n, rd)), 2.0);
 
     float radius = length(pos.xy);
-    float cellId = floor((pos.z + uTravel) / CELL_LENGTH);
-    float paletteT = (pos.z + uTravel) * 0.035
+    float surfaceTz = pos.z + uTravel;
+    float cellId = floor(surfaceTz / CELL_LENGTH);
+    float paletteT = surfaceTz * 0.035
       + radius * 0.12
       + layer * 0.09
       + uColorPhase;
@@ -485,6 +610,11 @@ void main() {
     vec3 orange = vec3(1.0, 0.34, 0.04);
     vec3 yellow = vec3(1.0, 0.86, 0.16);
     vec3 warmWhite = vec3(1.0, 0.98, 0.82);
+    vec3 turquoise = vec3(0.03, 0.72, 0.62);
+    vec3 deepMagenta = vec3(0.72, 0.015, 0.38);
+    vec3 alienGreen = vec3(0.34, 0.86, 0.32);
+    vec3 warmRed = vec3(0.92, 0.11, 0.2);
+    vec3 membraneCream = vec3(1.0, 0.9, 0.7);
 
     vec3 earlyColor;
     vec3 middleColor;
@@ -505,11 +635,16 @@ void main() {
       middleColor = mix(violet, magenta, 0.45 + 0.25 * depthTone);
       deepColor = mix(magenta, orange, 0.38 + 0.28 * depthTone);
       deepestColor = mix(orange, yellow, 0.5 + 0.3 * depthTone);
-    } else {
+    } else if (layer < 3.5) {
       earlyColor = mix(yellow, warmWhite, 0.45 + 0.2 * depthTone);
       middleColor = mix(magenta, warmWhite, 0.5 + 0.2 * depthTone);
       deepColor = mix(yellow, warmWhite, 0.58 + 0.2 * depthTone);
       deepestColor = mix(yellow, warmWhite, 0.72 + 0.18 * depthTone);
+    } else {
+      earlyColor = mix(turquoise, violet, 0.22 + 0.16 * depthTone);
+      middleColor = mix(turquoise, deepMagenta, 0.3 + 0.25 * depthTone);
+      deepColor = mix(deepMagenta, membraneCream, 0.38 + 0.18 * depthTone);
+      deepestColor = mix(turquoise, membraneCream, 0.62 + 0.2 * depthTone);
     }
 
     vec3 hierarchyColor = mix(
@@ -528,6 +663,41 @@ void main() {
       smoothstep(0.78, 1.0, uSpectralProgress)
     );
 
+    vec3 biologicalTint = hierarchyColor;
+    if (uOrganicStrength > 0.0001) {
+      if (layer < 0.5) {
+        biologicalTint = mix(cyan, turquoise, 0.65);
+      } else if (layer < 1.5) {
+        biologicalTint = mix(violet, deepMagenta, 0.7);
+      } else if (layer < 2.5) {
+        biologicalTint = mix(warmRed, orange, 0.55);
+      } else if (layer < 4.5) {
+        biologicalTint = membraneCream;
+      } else {
+        biologicalTint = mix(warmWhite, yellow, 0.18);
+      }
+      biologicalTint = mix(
+        biologicalTint,
+        alienGreen,
+        annulusLayer * 0.12 * (1.0 - coreSurface)
+      );
+      float biologicalTintAmount = organicSurface
+        * (0.16 + 0.08 * middleLayer + 0.12 * innerLayer + 0.12 * fineLayer);
+      biologicalTintAmount = max(
+        biologicalTintAmount,
+        annulusLayer * cellularSurface * 0.78
+      );
+      biologicalTintAmount = max(
+        biologicalTintAmount,
+        livingCoreLayer * coreSurface * 0.86
+      );
+      hierarchyColor = mix(
+        hierarchyColor,
+        biologicalTint,
+        clamp(biologicalTintAmount, 0.0, 0.86)
+      );
+    }
+
     float paletteInfluence = mix(0.1, 0.17, uSpectralProgress);
     vec3 baseCol = mix(
       hierarchyColor,
@@ -540,9 +710,6 @@ void main() {
       0.2 + 0.06 * uSpectralProgress
     );
 
-    float middleLayer = step(0.5, layer);
-    float innerLayer = step(1.5, layer);
-    float fineLayer = step(2.5, layer);
     float centerPull = exp(-radius * 3.2);
     float rimCore = pow(rim, 4.0);
 
@@ -570,8 +737,40 @@ void main() {
       * hierarchyLight
       * (0.65 + 0.35 * uReveal);
 
+    // Dark body and a narrow Fresnel edge create a substantial membrane
+    // without refraction or another render target.
+    float membraneResponse = organicSurface
+      * (0.1 + 0.15 * innerLayer + 0.2 * fineLayer);
+    membraneResponse += annulusLayer * cellularSurface * 0.65;
+    membraneResponse = max(
+      membraneResponse,
+      livingCoreLayer * coreSurface * 0.58
+    );
+    membraneResponse = clamp(membraneResponse, 0.0, 0.9);
+    color *= 1.0 - membraneResponse * 0.22 * (1.0 - rim);
+    color += biologicalTint
+      * membraneResponse
+      * (0.045 + 0.35 * rimCore + 0.08 * reverseLight);
+
+    if (uDetail > 0.5 && uCellularStrength > 0.0001) {
+      float theta = atan(pos.y, pos.x);
+      float fiberPhase = 18.0 * theta + surfaceTz * 0.62 + radius * 8.0;
+      float fiber = 1.0 - smoothstep(
+        0.12,
+        0.46,
+        abs(sin(fiberPhase))
+      );
+      float fiberFocus = 1.0 - smoothstep(0.35, 1.85, radius);
+      fiber *= cellularSurface
+        * fiberFocus
+        * (0.35 + 0.65 * innerLayer);
+      color += mix(turquoise, membraneCream, coreSurface)
+        * fiber
+        * (0.12 + 0.3 * coreSurface + 0.16 * annulusLayer);
+    }
+
     vec3 portalAccent = mix(orange, yellow, uSpectralProgress);
-    portalAccent = mix(portalAccent, warmWhite, fineLayer);
+    portalAccent = mix(portalAccent, warmWhite, max(fineLayer, livingCoreLayer));
     portalAccent = mix(
       portalAccent,
       warmWhite,
@@ -580,7 +779,13 @@ void main() {
     );
     color += portalAccent
       * centerPull
-      * (0.07 + 0.13 * innerLayer + 0.1 * fineLayer + 0.08 * rim);
+      * (
+        0.07
+        + 0.13 * innerLayer
+        + 0.1 * fineLayer
+        + 0.28 * livingCoreLayer * coreSurface
+        + 0.08 * rim
+      );
 
     float centerHotspot = centerPull
       * centerPull

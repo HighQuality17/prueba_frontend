@@ -21,6 +21,8 @@ import type { JourneyProgressRef } from '../timeline/journeyProgress'
 
 const RAYMARCH_STEPS_DESKTOP = 64
 const RAYMARCH_STEPS_MOBILE = 40
+const ORGANIC_IDLE_ANGULAR_SPEED =
+  (Math.PI * 2) / worldEffects.organicMetamorphosis.idleCycleSeconds
 
 // Single fullscreen triangle in clip space; covers the viewport without
 // depending on the PerspectiveCamera. Created once, never per frame.
@@ -60,6 +62,13 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
       uTwist: { value: worldEffects.tunnel.twistFrom },
       uColorPhase: { value: 0 },
       uSpectralProgress: { value: 0 },
+      uOrganicStrength: { value: 0 },
+      uCellularStrength: { value: 0 },
+      uOrganicCore: { value: 0 },
+      uOrganicPulse: { value: 1 },
+      uOrganicAsymmetry: {
+        value: worldEffects.organicMetamorphosis.maxAsymmetry,
+      },
       uStepLimit: {
         value: isMobileRef.current
           ? RAYMARCH_STEPS_MOBILE
@@ -91,8 +100,9 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
     */
     const u = material.uniforms
 
+    const journey = journeyProgress.current
     const effect = worldEffects.tunnel
-    const local = segmentProgress(journeyProgress.current, effect)
+    const local = segmentProgress(journey, effect)
     const revealRaw = clamp01(local / effect.revealFraction)
 
     // Skip the raymarch entirely outside the tunnel range.
@@ -114,6 +124,21 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
     u.uTwist.value = mix(effect.twistFrom, effect.twistTo, local)
     u.uColorPhase.value = local * 0.65
     u.uSpectralProgress.value = smootherstep01(local)
+
+    const organic = worldEffects.organicMetamorphosis
+    u.uOrganicStrength.value = smootherstep01(
+      segmentProgress(journey, organic),
+    )
+    u.uCellularStrength.value = smootherstep01(
+      segmentProgress(journey, organic.stages.cellular),
+    )
+    u.uOrganicCore.value = smootherstep01(
+      segmentProgress(journey, organic.stages.livingCore),
+    )
+    u.uOrganicPulse.value =
+      1 +
+      organic.idleAmplitude *
+        Math.sin(clock.elapsedTime * ORGANIC_IDLE_ANGULAR_SPEED)
   })
 
   /*

@@ -56,6 +56,17 @@ export interface TunnelEffect extends JourneyRange {
   readonly revealFraction: number
 }
 
+export interface OrganicMetamorphosisEffect extends JourneyRange {
+  readonly maxAsymmetry: number
+  readonly idleAmplitude: number
+  readonly idleCycleSeconds: number
+  readonly stages: {
+    readonly hints: JourneyRange
+    readonly cellular: JourneyRange
+    readonly livingCore: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
@@ -181,7 +192,22 @@ export const worldEffects = {
     twistTo: 0.52,
     revealFraction: 0.3,
   },
-} as const satisfies Record<string, TunnelEffect>
+  organicMetamorphosis: {
+    start: 0.88,
+    end: 1,
+    maxAsymmetry: 0.07,
+    idleAmplitude: 0.012,
+    idleCycleSeconds: 32,
+    stages: {
+      hints: { start: 0.88, end: 0.92 },
+      cellular: { start: 0.92, end: 0.96 },
+      livingCore: { start: 0.96, end: 1 },
+    },
+  },
+} as const satisfies Record<
+  string,
+  TunnelEffect | OrganicMetamorphosisEffect
+>
 
 const TUNNEL_REVEAL_END =
   worldEffects.tunnel.start +
