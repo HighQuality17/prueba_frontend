@@ -96,6 +96,17 @@ export interface LifeSeedEffect extends JourneyRange {
   }
 }
 
+export interface SeedGerminationEffect extends JourneyRange {
+  readonly stages: {
+    readonly activation: JourneyRange
+    readonly tension: JourneyRange
+    readonly opening: JourneyRange
+    readonly coreReveal: JourneyRange
+    readonly filaments: JourneyRange
+    readonly openedHold: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
@@ -134,7 +145,15 @@ export interface CameraDiveEffect extends JourneyRange {
   }
 }
 
-export const LEGACY_JOURNEY_END = 0.84
+export const PHASE_19_JOURNEY_END = 0.84
+export const LEGACY_JOURNEY_END = 0.84 * PHASE_19_JOURNEY_END
+
+function approvedRange(start: number, end: number): JourneyRange {
+  return {
+    start: start * PHASE_19_JOURNEY_END,
+    end: end * PHASE_19_JOURNEY_END,
+  }
+}
 
 function legacyRange(start: number, end: number): JourneyRange {
   return {
@@ -150,7 +169,7 @@ export const journeyActs = {
   life: { start: LEGACY_JOURNEY_END, end: 1 },
 } as const satisfies Record<string, JourneyRange>
 
-/* All approved pre-LIFE timings are uniformly rebased by 0.84. */
+/* Approved pre-LIFE timings retain their physical scroll duration. */
 export const journeyPhases = {
   cloudToFibonacci: legacyRange(0, 0.14),
   fibonacciSettle: legacyRange(0.14, 0.17),
@@ -261,19 +280,31 @@ export const worldEffects = {
     },
   },
   lifeSeed: {
-    ...journeyActs.life,
+    ...approvedRange(0.84, 1),
     initialScale: 0.072,
     finalScale: 0.2,
     forwardDistance: 1.45,
     verticalLift: 0.16,
     pulseAmplitude: 0.04,
     stages: {
-      handoff: { start: 0.84, end: 0.855 },
-      detachment: { start: 0.84, end: 0.9 },
-      backgroundFade: { start: 0.855, end: 0.93 },
-      suspension: { start: 0.93, end: 0.965 },
-      pulse: { start: 0.965, end: 0.985 },
-      anticipation: { start: 0.985, end: 1 },
+      handoff: approvedRange(0.84, 0.855),
+      detachment: approvedRange(0.84, 0.9),
+      backgroundFade: approvedRange(0.855, 0.93),
+      suspension: approvedRange(0.93, 0.965),
+      pulse: approvedRange(0.965, 0.985),
+      anticipation: approvedRange(0.985, 1),
+    },
+  },
+  seedGermination: {
+    start: PHASE_19_JOURNEY_END,
+    end: 1,
+    stages: {
+      activation: { start: 0.84, end: 0.87 },
+      tension: { start: 0.87, end: 0.9 },
+      opening: { start: 0.9, end: 0.95 },
+      coreReveal: { start: 0.92, end: 0.965 },
+      filaments: { start: 0.95, end: 0.985 },
+      openedHold: { start: 0.985, end: 1 },
     },
   },
 } as const satisfies Record<
@@ -282,6 +313,7 @@ export const worldEffects = {
   | OrganicMetamorphosisEffect
   | EyeEmergenceEffect
   | LifeSeedEffect
+  | SeedGerminationEffect
 >
 
 const TUNNEL_REVEAL_END =
@@ -305,7 +337,7 @@ export const postEffects = {
         start: TUNNEL_REVEAL_END,
         end: worldEffects.tunnel.end,
       },
-      lifeTransition: { start: 0.84, end: 0.94 },
+      lifeTransition: approvedRange(0.84, 0.94),
     },
   },
   chromaticAberration: {
@@ -323,7 +355,7 @@ export const postEffects = {
       build: legacyRange(0.88, 0.93),
       peak: legacyRange(0.93, 0.97),
       settle: legacyRange(0.97, 1),
-      lifeFade: { start: 0.84, end: 0.92 },
+      lifeFade: approvedRange(0.84, 0.92),
     },
   },
 } as const satisfies Record<
