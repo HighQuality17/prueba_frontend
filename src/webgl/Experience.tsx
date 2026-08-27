@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { MathUtils } from 'three'
 import { ParticleSystem } from './ParticleSystem'
 import { CAMERA_BASELINE, CameraRig } from './camera/CameraRig'
+import { AlienMedusa } from './life/AlienMedusa'
 import { LifeNetwork } from './life/LifeNetwork'
 import { LifeSeed } from './life/LifeSeed'
 import { JourneyPostProcessing } from './postprocessing/JourneyPostProcessing'
@@ -125,6 +126,7 @@ export function Experience() {
         <ParticleSystem journeyProgress={visualJourneyProgress} />
         <LifeSeed journeyProgress={visualJourneyProgress} />
         <LifeNetwork journeyProgress={visualJourneyProgress} />
+        <AlienMedusa journeyProgress={visualJourneyProgress} />
         <JourneyPostProcessing journeyProgress={visualJourneyProgress} />
       </Canvas>
     </div>

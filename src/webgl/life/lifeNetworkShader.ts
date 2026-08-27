@@ -5,17 +5,20 @@ attribute float aNetworkDistance;
 attribute float aPathType;
 attribute float aMobileVisible;
 attribute float aPathHue;
+attribute float aBirthPath;
 
 uniform float uPrimaryGrowth;
 uniform float uSecondaryGrowth;
 uniform float uConnectionGrowth;
 uniform float uPulseProgress;
+uniform float uBirthTransfer;
 uniform float uDetail;
 
 varying float vAcross;
 varying float vNetworkDistance;
 varying float vPathHue;
 varying float vPulse;
+varying float vBirthEnergy;
 varying float vVisibility;
 
 void main() {
@@ -32,12 +35,16 @@ void main() {
   );
   float mobileVisibility = mix(aMobileVisible, 1.0, uDetail);
   float pulseCenter = mix(-0.08, 1.18, uPulseProgress);
+  float birthCenter = mix(-0.05, 1.15, uBirthTransfer);
 
   vAcross = aAcross;
   vNetworkDistance = aNetworkDistance;
   vPathHue = aPathHue;
   vPulse = exp(-abs(aNetworkDistance - pulseCenter) * 24.0)
     * smoothstep(0.015, 0.12, uPulseProgress);
+  vBirthEnergy = aBirthPath
+    * exp(-abs(aPathCoordinate - birthCenter) * 28.0)
+    * smoothstep(0.015, 0.12, uBirthTransfer);
   vVisibility = reveal * mobileVisibility;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
@@ -50,6 +57,7 @@ varying float vAcross;
 varying float vNetworkDistance;
 varying float vPathHue;
 varying float vPulse;
+varying float vBirthEnergy;
 varying float vVisibility;
 
 void main() {
@@ -75,6 +83,9 @@ void main() {
     smoothstep(0.18, 0.86, vNetworkDistance)
   );
   color += pulseColor * vPulse * (0.9 + 0.45 * luminousCore);
+  color += mix(warmWhite, gold, 0.36)
+    * vBirthEnergy
+    * (0.8 + 0.5 * luminousCore);
 
   float alpha = uOpacity
     * vVisibility
@@ -87,15 +98,20 @@ export const lifeNodeVertexShader = /* glsl */ `
 attribute float aNodeDistance;
 attribute float aNodeOrder;
 attribute float aMobileVisible;
+attribute float aBirthNode;
 
 uniform float uNodeGrowth;
 uniform float uPulseProgress;
+uniform float uBirthActivation;
+uniform float uBirthDetach;
 uniform float uDetail;
 
 varying vec3 vNodeNormal;
 varying vec3 vViewDirection;
 varying float vNodeDistance;
 varying float vNodePulse;
+varying float vBirthEnergy;
+varying float vBirthResidual;
 varying float vNodeVisibility;
 
 void main() {
@@ -108,8 +124,11 @@ void main() {
   float pulseCenter = mix(-0.08, 1.18, uPulseProgress);
   float pulse = exp(-abs(aNodeDistance - pulseCenter) * 22.0)
     * smoothstep(0.015, 0.12, uPulseProgress);
+  float birthScale = 1.0
+    + aBirthNode * (0.46 * uBirthActivation * (1.0 - uBirthDetach))
+    - aBirthNode * 0.18 * uBirthDetach;
   vec3 nodePosition = position
-    * mix(0.04, 1.0 + 0.12 * pulse, reveal);
+    * mix(0.04, (1.0 + 0.12 * pulse) * birthScale, reveal);
   vec4 worldPosition = modelMatrix
     * instanceMatrix
     * vec4(nodePosition, 1.0);
@@ -118,6 +137,8 @@ void main() {
   vViewDirection = normalize(cameraPosition - worldPosition.xyz);
   vNodeDistance = aNodeDistance;
   vNodePulse = pulse;
+  vBirthEnergy = aBirthNode * uBirthActivation * (1.0 - uBirthDetach);
+  vBirthResidual = aBirthNode * uBirthDetach;
   vNodeVisibility = reveal * mobileVisibility;
   gl_Position = projectionMatrix * viewMatrix * worldPosition;
 }
@@ -130,6 +151,8 @@ varying vec3 vNodeNormal;
 varying vec3 vViewDirection;
 varying float vNodeDistance;
 varying float vNodePulse;
+varying float vBirthEnergy;
+varying float vBirthResidual;
 varying float vNodeVisibility;
 
 void main() {
@@ -152,6 +175,8 @@ void main() {
   color += mix(warmWhite, turquoise, vNodeDistance * 0.42)
     * innerGlow * 0.72;
   color += mix(gold, warmWhite, 0.5) * vNodePulse * 1.15;
+  color += mix(warmWhite, gold, 0.3) * vBirthEnergy * 1.05;
+  color *= 1.0 - 0.42 * vBirthResidual;
 
   gl_FragColor = vec4(
     color,

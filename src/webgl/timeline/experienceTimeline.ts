@@ -118,6 +118,19 @@ export interface LifeNetworkEffect extends JourneyRange {
   }
 }
 
+export interface FirstLifeformEffect extends JourneyRange {
+  readonly stages: {
+    readonly nodeActivation: JourneyRange
+    readonly energyTransfer: JourneyRange
+    readonly bellFormation: JourneyRange
+    readonly tentacleGrowth: JourneyRange
+    readonly detachment: JourneyRange
+    readonly connectionRelease: JourneyRange
+    readonly contraction: JourneyRange
+    readonly freeHold: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
@@ -156,9 +169,17 @@ export interface CameraDiveEffect extends JourneyRange {
   }
 }
 
-export const PHASE_20_JOURNEY_END = 0.84
+export const PHASE_21_JOURNEY_END = 0.84
+export const PHASE_20_JOURNEY_END = 0.84 * PHASE_21_JOURNEY_END
 export const PHASE_19_JOURNEY_END = 0.84 * PHASE_20_JOURNEY_END
 export const LEGACY_JOURNEY_END = 0.84 * PHASE_19_JOURNEY_END
+
+function phase21Range(start: number, end: number): JourneyRange {
+  return {
+    start: start * PHASE_21_JOURNEY_END,
+    end: end * PHASE_21_JOURNEY_END,
+  }
+}
 
 function phase20Range(start: number, end: number): JourneyRange {
   return {
@@ -326,15 +347,28 @@ export const worldEffects = {
     },
   },
   lifeNetwork: {
-    start: PHASE_20_JOURNEY_END,
+    ...phase21Range(0.84, 1),
+    stages: {
+      primaryBranches: phase21Range(0.84, 0.89),
+      bifurcations: phase21Range(0.88, 0.93),
+      nodes: phase21Range(0.92, 0.955),
+      connections: phase21Range(0.94, 0.97),
+      energyPulse: phase21Range(0.97, 0.992),
+      stableHold: phase21Range(0.992, 1),
+    },
+  },
+  firstLifeform: {
+    start: PHASE_21_JOURNEY_END,
     end: 1,
     stages: {
-      primaryBranches: { start: 0.84, end: 0.89 },
-      bifurcations: { start: 0.88, end: 0.93 },
-      nodes: { start: 0.92, end: 0.955 },
-      connections: { start: 0.94, end: 0.97 },
-      energyPulse: { start: 0.97, end: 0.992 },
-      stableHold: { start: 0.992, end: 1 },
+      nodeActivation: { start: 0.84, end: 0.865 },
+      energyTransfer: { start: 0.845, end: 0.88 },
+      bellFormation: { start: 0.865, end: 0.91 },
+      tentacleGrowth: { start: 0.895, end: 0.94 },
+      detachment: { start: 0.92, end: 0.97 },
+      connectionRelease: { start: 0.955, end: 0.98 },
+      contraction: { start: 0.97, end: 0.992 },
+      freeHold: { start: 0.992, end: 1 },
     },
   },
 } as const satisfies Record<
@@ -345,6 +379,7 @@ export const worldEffects = {
   | LifeSeedEffect
   | SeedGerminationEffect
   | LifeNetworkEffect
+  | FirstLifeformEffect
 >
 
 const TUNNEL_REVEAL_END =
