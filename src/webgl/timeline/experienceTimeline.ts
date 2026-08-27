@@ -107,6 +107,17 @@ export interface SeedGerminationEffect extends JourneyRange {
   }
 }
 
+export interface LifeNetworkEffect extends JourneyRange {
+  readonly stages: {
+    readonly primaryBranches: JourneyRange
+    readonly bifurcations: JourneyRange
+    readonly nodes: JourneyRange
+    readonly connections: JourneyRange
+    readonly energyPulse: JourneyRange
+    readonly stableHold: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
@@ -145,8 +156,16 @@ export interface CameraDiveEffect extends JourneyRange {
   }
 }
 
-export const PHASE_19_JOURNEY_END = 0.84
+export const PHASE_20_JOURNEY_END = 0.84
+export const PHASE_19_JOURNEY_END = 0.84 * PHASE_20_JOURNEY_END
 export const LEGACY_JOURNEY_END = 0.84 * PHASE_19_JOURNEY_END
+
+function phase20Range(start: number, end: number): JourneyRange {
+  return {
+    start: start * PHASE_20_JOURNEY_END,
+    end: end * PHASE_20_JOURNEY_END,
+  }
+}
 
 function approvedRange(start: number, end: number): JourneyRange {
   return {
@@ -296,15 +315,26 @@ export const worldEffects = {
     },
   },
   seedGermination: {
-    start: PHASE_19_JOURNEY_END,
+    ...phase20Range(0.84, 1),
+    stages: {
+      activation: phase20Range(0.84, 0.87),
+      tension: phase20Range(0.87, 0.9),
+      opening: phase20Range(0.9, 0.95),
+      coreReveal: phase20Range(0.92, 0.965),
+      filaments: phase20Range(0.95, 0.985),
+      openedHold: phase20Range(0.985, 1),
+    },
+  },
+  lifeNetwork: {
+    start: PHASE_20_JOURNEY_END,
     end: 1,
     stages: {
-      activation: { start: 0.84, end: 0.87 },
-      tension: { start: 0.87, end: 0.9 },
-      opening: { start: 0.9, end: 0.95 },
-      coreReveal: { start: 0.92, end: 0.965 },
-      filaments: { start: 0.95, end: 0.985 },
-      openedHold: { start: 0.985, end: 1 },
+      primaryBranches: { start: 0.84, end: 0.89 },
+      bifurcations: { start: 0.88, end: 0.93 },
+      nodes: { start: 0.92, end: 0.955 },
+      connections: { start: 0.94, end: 0.97 },
+      energyPulse: { start: 0.97, end: 0.992 },
+      stableHold: { start: 0.992, end: 1 },
     },
   },
 } as const satisfies Record<
@@ -314,6 +344,7 @@ export const worldEffects = {
   | EyeEmergenceEffect
   | LifeSeedEffect
   | SeedGerminationEffect
+  | LifeNetworkEffect
 >
 
 const TUNNEL_REVEAL_END =

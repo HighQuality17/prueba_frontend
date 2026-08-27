@@ -18,6 +18,10 @@ import {
 } from '../timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from '../timeline/journeyProgress'
 import {
+  LIFE_SEED_FINAL_POSITION,
+  LIFE_SEED_START_POSITION,
+} from './lifeLayout'
+import {
   germinalCoreFragmentShader,
   germinalCoreVertexShader,
   germinalFilamentFragmentShader,
@@ -26,9 +30,6 @@ import {
   lifeSeedVertexShader,
 } from './lifeSeedShader'
 
-const SEED_START_X = 0.02
-const SEED_START_Z = -5.65
-const SEED_FINAL_Z = SEED_START_Z + worldEffects.lifeSeed.forwardDistance
 const FILAMENT_COUNT = 6
 const FILAMENT_SEGMENTS = 14
 
@@ -182,9 +183,17 @@ export function LifeSeed({ journeyProgress }: LifeSeedProps) {
       detachment,
     )
     group.position.set(
-      SEED_START_X,
-      effect.verticalLift * detachment,
-      mix(SEED_START_Z, SEED_FINAL_Z, detachment),
+      LIFE_SEED_START_POSITION.x,
+      mix(
+        LIFE_SEED_START_POSITION.y,
+        LIFE_SEED_FINAL_POSITION.y,
+        detachment,
+      ),
+      mix(
+        LIFE_SEED_START_POSITION.z,
+        LIFE_SEED_FINAL_POSITION.z,
+        detachment,
+      ),
     )
     group.scale.setScalar(baseScale * (1 + effect.pulseAmplitude * pulse))
 
@@ -211,7 +220,11 @@ export function LifeSeed({ journeyProgress }: LifeSeedProps) {
   return (
     <group
       ref={groupRef}
-      position={[SEED_START_X, 0, SEED_START_Z]}
+      position={[
+        LIFE_SEED_START_POSITION.x,
+        LIFE_SEED_START_POSITION.y,
+        LIFE_SEED_START_POSITION.z,
+      ]}
       frustumCulled={false}
       visible={false}
     >
