@@ -19,7 +19,8 @@
   Per pixel cost: <= uStepLimit map evaluations. Stable journey stages evaluate
   three mathematical radii on mobile and four on desktop, plus one desktop
   membrane contour. The final eye membrane replaces the shared living-core
-  contour instead of permanently stacking another primitive. Two short family
+  contour instead of permanently stacking another primitive. One compact seed
+  primitive is active only during the final emergence beat. Two short family
   transitions evaluate both adjacent curated families. Confirmed hits add 2
   mobile / 3 desktop refinements and 4 evaluations for the normal.
 */
@@ -48,6 +49,8 @@ uniform float uOrganicAsymmetry;
 uniform float uEyeStrength;
 uniform float uPupilStrength;
 uniform float uEyeGlint;
+uniform float uEyeBlink;
+uniform float uLifeSeed;
 uniform float uStepLimit;
 uniform float uDetail;
 
@@ -499,6 +502,32 @@ vec2 tunnelSDF(vec3 p) {
     if (eyeDistance < scene.x) scene = vec2(eyeDistance, 6.0);
   }
 
+  if (uLifeSeed > 0.0001) {
+    // A tiny embryonic membrane separates forward from the pupil while the
+    // eye remains intact behind it. Polynomial symmetry keeps map cost low.
+    vec3 seedCenter = vec3(
+      0.0,
+      0.0,
+      mix(EYE_DEPTH + 0.02, EYE_DEPTH + 0.75, uLifeSeed)
+    );
+    vec3 seedPosition = p - seedCenter;
+    float seedRho = length(seedPosition.xy);
+    vec2 seedDirection = seedPosition.xy / max(seedRho, 0.0001);
+    float seedCosThree = seedDirection.x * (
+      seedDirection.x * seedDirection.x
+        - 3.0 * seedDirection.y * seedDirection.y
+    );
+    float seedScallop = 2.0 * seedCosThree * seedCosThree - 1.0;
+    float seedRadius = mix(0.002, 0.14, uLifeSeed)
+      * (1.0 + mix(0.035, 0.09, uDetail) * seedScallop);
+    float seedDistance = length(vec3(
+      seedPosition.xy,
+      seedPosition.z * 1.35
+    )) - seedRadius;
+    seedDistance *= 0.74;
+    if (seedDistance < scene.x) scene = vec2(seedDistance, 7.0);
+  }
+
   return scene;
 }
 
@@ -600,7 +629,8 @@ void main() {
     float membraneLayer = step(3.5, layer);
     float annulusLayer = membraneLayer * (1.0 - step(4.5, layer));
     float livingCoreLayer = step(4.5, layer) * (1.0 - step(5.5, layer));
-    float eyeLayer = step(5.5, layer);
+    float eyeLayer = step(5.5, layer) * (1.0 - step(6.5, layer));
+    float seedLayer = step(6.5, layer);
     float organicSurface = 0.0;
     float cellularSurface = 0.0;
     float coreSurface = 0.0;
@@ -923,9 +953,71 @@ void main() {
           * secondaryGlint * uEyeGlint * 1.15;
       }
 
+      float birthHalo = exp(-eyeRadius * eyeRadius * 36.0) * uLifeSeed;
+      eyeColor += mix(irisTeal, irisMagenta, 0.38)
+        * birthHalo * (0.28 + 0.22 * concentricBand);
+
+      // Opposed living petals close over the iris. Their boundary borrows the
+      // existing mandala signals, avoiding a literal pair of human eyelids.
+      float blinkOpening = mix(1.15, 0.018, uEyeBlink);
+      float closureWarp = uEyeBlink * (
+        0.045 * segmentWave + 0.04 * (concentricBand - 0.5)
+      );
+      float organicOpening = max(blinkOpening + closureWarp, 0.0);
+      float remainingAperture = 1.0 - smoothstep(
+        organicOpening - 0.026,
+        organicOpening + 0.026,
+        abs(eyeUv.y)
+      );
+      float membraneClosure = (1.0 - remainingAperture) * uEyeBlink;
+      vec3 upperPetal = mix(irisDeep, irisViolet, 0.16);
+      vec3 lowerPetal = mix(irisDeep, irisTeal, 0.12);
+      vec3 closureColor = mix(
+        lowerPetal,
+        upperPetal,
+        step(0.0, eyeUv.y)
+      );
+      closureColor += mix(irisMagenta, irisTeal, mandalaFacet)
+        * petalRidge * 0.035;
+      eyeColor = mix(eyeColor, closureColor, membraneClosure);
+      float closureSeam = 1.0 - smoothstep(
+        0.006,
+        0.03,
+        abs(abs(eyeUv.y) - organicOpening)
+      );
+      closureSeam *= uEyeBlink;
+      eyeColor += mix(irisMagenta, irisTeal, mandalaFacet)
+        * closureSeam * (0.1 + 0.08 * petalRidge);
+      eyeColor *= mix(1.0, 0.28, uEyeBlink * uEyeBlink);
+
       color = eyeColor
         * mix(0.42, 1.0, uEyeStrength)
         * (0.86 + 0.14 * diff);
+    }
+
+    if (seedLayer > 0.5) {
+      vec3 seedCenter = vec3(
+        0.0,
+        0.0,
+        mix(EYE_DEPTH + 0.02, EYE_DEPTH + 0.75, uLifeSeed)
+      );
+      vec3 seedPosition = pos - seedCenter;
+      float seedRadius = length(seedPosition);
+      float seedTheta = atan(seedPosition.y, seedPosition.x);
+      float seedFacet = 0.5 + 0.5 * sin(
+        mix(6.0, 12.0, uDetail) * seedTheta + seedPosition.z * 24.0
+      );
+      float seedBand = 0.5 + 0.5 * cos(
+        seedRadius * 92.0 - seedPosition.z * 28.0
+      );
+      vec3 seedColor = mix(turquoise, violet, 0.2 + 0.55 * seedFacet);
+      seedColor = mix(seedColor, magenta, 0.12 + 0.18 * seedBand);
+      color = seedColor * (0.14 + 0.34 * diff + 0.24 * seedBand);
+      color += mix(magenta, yellow, 0.32)
+        * rimCore * (0.48 + 0.34 * uLifeSeed);
+      float seedCore = exp(-dot(seedPosition.xy, seedPosition.xy) * 120.0);
+      color += mix(warmWhite, turquoise, 0.26)
+        * seedCore * (0.34 + 0.42 * uLifeSeed);
     }
 
     // Inner rings retain more distant light, reinforcing the central portal.
@@ -944,6 +1036,10 @@ void main() {
       * rimCore
       * distantPortal
       * (0.08 * innerLayer + 0.12 * fineLayer);
+    // The closed eye leaves a near-black membrane state for the next phase;
+    // the eye itself retains its narrow closure seam as the final landmark.
+    float blinkVisibility = mix(0.1, 1.0, max(eyeLayer, seedLayer));
+    color *= mix(1.0, blinkVisibility, uEyeBlink);
     // Extremely slow luminance breathing keeps a static frame alive without
     // moving the procedural camera or competing with scroll-driven travel.
     color *= 0.97 + 0.03 * sin(uTime * 0.16 + cellId * 1.618);

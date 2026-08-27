@@ -72,6 +72,11 @@ export interface EyeEmergenceEffect extends JourneyRange {
     readonly iris: JourneyRange
     readonly pupil: JourneyRange
     readonly glint: JourneyRange
+    readonly openHold: JourneyRange
+    readonly blinkClose: JourneyRange
+    readonly blinkReopen: JourneyRange
+    readonly reopenedHold: JourneyRange
+    readonly emergence: JourneyRange
   }
 }
 
@@ -216,9 +221,14 @@ export const worldEffects = {
     start: 0.96,
     end: 1,
     stages: {
-      iris: { start: 0.96, end: 0.985 },
-      pupil: { start: 0.97, end: 0.995 },
-      glint: { start: 0.985, end: 1 },
+      iris: { start: 0.96, end: 0.976 },
+      pupil: { start: 0.966, end: 0.978 },
+      glint: { start: 0.972, end: 0.978 },
+      openHold: { start: 0.978, end: 0.983 },
+      blinkClose: { start: 0.983, end: 0.989 },
+      blinkReopen: { start: 0.989, end: 0.994 },
+      reopenedHold: { start: 0.994, end: 0.997 },
+      emergence: { start: 0.997, end: 1 },
     },
   },
 } as const satisfies Record<
