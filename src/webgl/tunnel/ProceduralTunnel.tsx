@@ -66,6 +66,9 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
       uCellularStrength: { value: 0 },
       uOrganicCore: { value: 0 },
       uOrganicPulse: { value: 1 },
+      uEyeStrength: { value: 0 },
+      uPupilStrength: { value: 0 },
+      uEyeGlint: { value: 0 },
       uOrganicAsymmetry: {
         value: worldEffects.organicMetamorphosis.maxAsymmetry,
       },
@@ -134,6 +137,16 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
     )
     u.uOrganicCore.value = smootherstep01(
       segmentProgress(journey, organic.stages.livingCore),
+    )
+    const eye = worldEffects.eyeEmergence
+    u.uEyeStrength.value = smootherstep01(
+      segmentProgress(journey, eye.stages.iris),
+    )
+    u.uPupilStrength.value = smootherstep01(
+      segmentProgress(journey, eye.stages.pupil),
+    )
+    u.uEyeGlint.value = smootherstep01(
+      segmentProgress(journey, eye.stages.glint),
     )
     u.uOrganicPulse.value =
       1 +

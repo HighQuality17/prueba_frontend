@@ -67,6 +67,14 @@ export interface OrganicMetamorphosisEffect extends JourneyRange {
   }
 }
 
+export interface EyeEmergenceEffect extends JourneyRange {
+  readonly stages: {
+    readonly iris: JourneyRange
+    readonly pupil: JourneyRange
+    readonly glint: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
@@ -201,12 +209,21 @@ export const worldEffects = {
     stages: {
       hints: { start: 0.88, end: 0.92 },
       cellular: { start: 0.92, end: 0.96 },
-      livingCore: { start: 0.96, end: 1 },
+      livingCore: { start: 0.92, end: 0.96 },
+    },
+  },
+  eyeEmergence: {
+    start: 0.96,
+    end: 1,
+    stages: {
+      iris: { start: 0.96, end: 0.985 },
+      pupil: { start: 0.97, end: 0.995 },
+      glint: { start: 0.985, end: 1 },
     },
   },
 } as const satisfies Record<
   string,
-  TunnelEffect | OrganicMetamorphosisEffect
+  TunnelEffect | OrganicMetamorphosisEffect | EyeEmergenceEffect
 >
 
 const TUNNEL_REVEAL_END =

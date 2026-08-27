@@ -17,10 +17,11 @@
   - FOG_DENSITY 0.1        exponential distance fog toward black
 
   Per pixel cost: <= uStepLimit map evaluations. Stable journey stages evaluate
-  three mathematical radii on mobile and four on desktop, plus one shared core
-  contour late in the journey and one desktop membrane contour. Two short
-  family transitions evaluate both adjacent curated families. Confirmed hits
-  add 2 mobile / 3 desktop refinements and 4 evaluations for the normal.
+  three mathematical radii on mobile and four on desktop, plus one desktop
+  membrane contour. The final eye membrane replaces the shared living-core
+  contour instead of permanently stacking another primitive. Two short family
+  transitions evaluate both adjacent curated families. Confirmed hits add 2
+  mobile / 3 desktop refinements and 4 evaluations for the normal.
 */
 
 export const tunnelVertexShader = /* glsl */ `
@@ -44,6 +45,9 @@ uniform float uCellularStrength;
 uniform float uOrganicCore;
 uniform float uOrganicPulse;
 uniform float uOrganicAsymmetry;
+uniform float uEyeStrength;
+uniform float uPupilStrength;
+uniform float uEyeGlint;
 uniform float uStepLimit;
 uniform float uDetail;
 
@@ -70,6 +74,7 @@ uniform float uDetail;
 #define MAX_RAY_DISTANCE 30.0
 #define FOG_DENSITY 0.1
 #define APERTURE_MAX 2.6
+#define EYE_DEPTH -6.4
 
 float sdBox2D(vec2 p, vec2 halfSize) {
   vec2 q = abs(p) - halfSize;
@@ -456,7 +461,7 @@ vec2 tunnelSDF(vec3 p) {
     if (membraneDistance < scene.x) scene = vec2(membraneDistance, 4.0);
   }
 
-  if (coreDepth > 0.0001) {
+  if (coreDepth > 0.0001 && uEyeStrength < 0.999) {
     float livingCoreRadius = 0.12
       * depthScale
       * cellScale
@@ -470,8 +475,28 @@ vec2 tunnelSDF(vec3 p) {
       0.018 * innerThicknessScale
     );
     livingCoreDistance += (1.0 - coreDepth) * 0.04;
+    livingCoreDistance += uEyeStrength * 0.08;
     livingCoreDistance = max(livingCoreDistance, p.z + 0.75);
     if (livingCoreDistance < scene.x) scene = vec2(livingCoreDistance, 5.0);
+  }
+
+  if (uEyeStrength > 0.0001) {
+    // The former point-like core opens into one shallow living membrane. Its
+    // exact polynomial cos(6 theta) edge adds no map-stage trigonometric cost.
+    vec2 eyeDirection = p.xy / max(rho, 0.0001);
+    float cosThreeTheta = eyeDirection.x * (
+      eyeDirection.x * eyeDirection.x
+        - 3.0 * eyeDirection.y * eyeDirection.y
+    );
+    float eyeScallop = 2.0 * cosThreeTheta * cosThreeTheta - 1.0;
+    float eyeRadius = mix(0.12, 0.82, uEyeStrength)
+      * (1.0 + 0.04 * eyeScallop * uEyeStrength);
+    float eyeThickness = mix(0.014, 0.04, uEyeStrength);
+    float eyeDistance = sdBox2D(
+      vec2(rho, p.z - EYE_DEPTH),
+      vec2(eyeRadius, eyeThickness)
+    );
+    if (eyeDistance < scene.x) scene = vec2(eyeDistance, 6.0);
   }
 
   return scene;
@@ -574,7 +599,8 @@ void main() {
     float fineLayer = step(2.5, layer);
     float membraneLayer = step(3.5, layer);
     float annulusLayer = membraneLayer * (1.0 - step(4.5, layer));
-    float livingCoreLayer = step(4.5, layer);
+    float livingCoreLayer = step(4.5, layer) * (1.0 - step(5.5, layer));
+    float eyeLayer = step(5.5, layer);
     float organicSurface = 0.0;
     float cellularSurface = 0.0;
     float coreSurface = 0.0;
@@ -643,8 +669,8 @@ void main() {
     } else {
       earlyColor = mix(turquoise, violet, 0.22 + 0.16 * depthTone);
       middleColor = mix(turquoise, deepMagenta, 0.3 + 0.25 * depthTone);
-      deepColor = mix(deepMagenta, membraneCream, 0.38 + 0.18 * depthTone);
-      deepestColor = mix(turquoise, membraneCream, 0.62 + 0.2 * depthTone);
+      deepColor = mix(deepMagenta, turquoise, 0.18 + 0.14 * depthTone);
+      deepestColor = mix(turquoise, magenta, 0.24 + 0.18 * depthTone);
     }
 
     vec3 hierarchyColor = mix(
@@ -672,9 +698,9 @@ void main() {
       } else if (layer < 2.5) {
         biologicalTint = mix(warmRed, orange, 0.55);
       } else if (layer < 4.5) {
-        biologicalTint = membraneCream;
+        biologicalTint = mix(deepMagenta, turquoise, 0.48);
       } else {
-        biologicalTint = mix(warmWhite, yellow, 0.18);
+        biologicalTint = mix(violet, turquoise, 0.58);
       }
       biologicalTint = mix(
         biologicalTint,
@@ -764,7 +790,7 @@ void main() {
       fiber *= cellularSurface
         * fiberFocus
         * (0.35 + 0.65 * innerLayer);
-      color += mix(turquoise, membraneCream, coreSurface)
+      color += mix(turquoise, mix(magenta, warmWhite, 0.16), coreSurface)
         * fiber
         * (0.12 + 0.3 * coreSurface + 0.16 * annulusLayer);
     }
@@ -794,6 +820,113 @@ void main() {
     color += mix(portalAccent, vec3(1.0, 0.98, 0.88), 0.65)
       * centerHotspot
       * (0.65 + 0.35 * uReveal);
+
+    if (eyeLayer > 0.5) {
+      // The eye is the shaded face of the final living-core membrane, not a
+      // separate overlay. Its radial construction inherits 6/12/18 symmetry.
+      vec2 eyeUv = pos.xy / 0.82;
+      float eyeRadius = length(eyeUv);
+      float eyeTheta = atan(eyeUv.y, eyeUv.x);
+      float segmentWave = sin(6.0 * eyeTheta + eyeRadius * 9.0);
+      float fiberFrequency = mix(12.0, 18.0, uDetail);
+      float irisFiber = 1.0 - smoothstep(
+        0.12,
+        mix(0.5, 0.42, uDetail),
+        abs(sin(
+          fiberFrequency * eyeTheta
+            + eyeRadius * 42.0
+            + segmentWave * 0.8
+        ))
+      );
+      float irisBand = smoothstep(0.16, 0.27, eyeRadius)
+        * (1.0 - smoothstep(0.88, 1.02, eyeRadius));
+      irisFiber *= irisBand;
+      float concentricBand = 0.5 + 0.5 * cos(
+        eyeRadius * 48.0 + segmentWave * 0.65
+      );
+      float mandalaFacet = 0.5 + 0.5 * segmentWave;
+      float petalRidge = 1.0 - smoothstep(0.1, 0.46, abs(segmentWave));
+
+      vec3 irisDeep = vec3(0.012, 0.025, 0.075);
+      vec3 irisTeal = vec3(0.015, 0.78, 0.68);
+      vec3 irisViolet = vec3(0.46, 0.08, 0.94);
+      vec3 irisMagenta = vec3(0.94, 0.025, 0.52);
+      vec3 irisGold = vec3(1.04, 0.55, 0.075);
+      vec3 irisColor = mix(
+        irisTeal,
+        irisViolet,
+        0.22 + 0.52 * mandalaFacet
+      );
+      irisColor = mix(
+        irisColor,
+        irisMagenta,
+        0.12 + 0.24 * (1.0 - concentricBand)
+      );
+      float goldAccent = (0.035 + 0.16 * petalRidge) * concentricBand;
+      irisColor = mix(irisColor, irisGold, goldAccent);
+      irisColor *= 0.34
+        + 0.34 * concentricBand
+        + 0.58 * irisFiber
+        + 0.2 * petalRidge;
+
+      float irisBody = smoothstep(0.08, 0.2, eyeRadius)
+        * (1.0 - smoothstep(0.9, 1.02, eyeRadius));
+      vec3 eyeColor = mix(irisDeep, irisColor, irisBody);
+      float outerIrisRing = smoothstep(0.73, 0.81, eyeRadius)
+        * (1.0 - smoothstep(0.91, 1.0, eyeRadius));
+      float innerIrisRing = smoothstep(0.2, 0.27, eyeRadius)
+        * (1.0 - smoothstep(0.32, 0.39, eyeRadius));
+      eyeColor += mix(irisViolet, irisTeal, 0.46)
+        * outerIrisRing
+        * (0.2 + 0.26 * concentricBand + 0.16 * petalRidge);
+      eyeColor += mix(irisMagenta, irisGold, 0.32)
+        * innerIrisRing * (0.34 + 0.18 * petalRidge);
+
+      // A tapered analytical slit stays abstract while reading as reptilian.
+      float pupilVertical = clamp(abs(eyeUv.y) / 0.66, 0.0, 1.0);
+      float pupilHalfWidth = mix(
+        0.115,
+        0.026,
+        pupilVertical * pupilVertical
+      );
+      float pupilShape = 1.0 - smoothstep(
+        pupilHalfWidth,
+        pupilHalfWidth + 0.018,
+        abs(eyeUv.x)
+      );
+      pupilShape *= 1.0 - smoothstep(0.58, 0.68, abs(eyeUv.y));
+      float pupilOuter = 1.0 - smoothstep(
+        pupilHalfWidth + 0.028,
+        pupilHalfWidth + 0.05,
+        abs(eyeUv.x)
+      );
+      pupilOuter *= 1.0 - smoothstep(0.61, 0.72, abs(eyeUv.y));
+      float pupilMask = pupilShape * uPupilStrength;
+      float pupilRim = max(pupilOuter - pupilShape, 0.0) * uPupilStrength;
+      eyeColor += mix(irisMagenta, irisGold, 0.38) * pupilRim * 0.62;
+      eyeColor = mix(eyeColor, vec3(0.0004, 0.0007, 0.0012), pupilMask * 0.99);
+
+      float wetRim = pow(smoothstep(0.55, 1.0, eyeRadius), 3.0);
+      eyeColor += mix(irisViolet, irisTeal, 0.64) * wetRim * 0.075;
+      vec2 glintOffset = eyeUv - vec2(-0.1, 0.16);
+      float primaryGlint = exp(
+        -dot(glintOffset * vec2(1.0, 1.35), glintOffset * vec2(1.0, 1.35))
+          * 420.0
+      );
+      eyeColor += warmWhite * primaryGlint * uEyeGlint * 2.4;
+      if (uDetail > 0.5) {
+        vec2 secondaryOffset = eyeUv - vec2(0.15, 0.055);
+        float secondaryGlint = exp(
+          -dot(secondaryOffset, secondaryOffset) * 760.0
+        );
+        eyeColor += mix(warmWhite, cyan, 0.35)
+          * secondaryGlint * uEyeGlint * 1.15;
+      }
+
+      color = eyeColor
+        * mix(0.42, 1.0, uEyeStrength)
+        * (0.86 + 0.14 * diff);
+    }
 
     // Inner rings retain more distant light, reinforcing the central portal.
     float fogDensity = mix(FOG_DENSITY, 0.052, innerLayer);
