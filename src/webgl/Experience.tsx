@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { MathUtils } from 'three'
 import { ParticleSystem } from './ParticleSystem'
 import { CAMERA_BASELINE, CameraRig } from './camera/CameraRig'
+import { LifeSeed } from './life/LifeSeed'
 import { JourneyPostProcessing } from './postprocessing/JourneyPostProcessing'
 import { ProceduralTunnel } from './tunnel/ProceduralTunnel'
 import type { JourneyProgressRef } from './timeline/journeyProgress'
@@ -121,6 +122,7 @@ export function Experience() {
         <CameraRig journeyProgress={visualJourneyProgress} />
         <ProceduralTunnel journeyProgress={visualJourneyProgress} />
         <ParticleSystem journeyProgress={visualJourneyProgress} />
+        <LifeSeed journeyProgress={visualJourneyProgress} />
         <JourneyPostProcessing journeyProgress={visualJourneyProgress} />
       </Canvas>
     </div>

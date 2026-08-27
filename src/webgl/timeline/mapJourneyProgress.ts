@@ -83,7 +83,7 @@ export function tunnelBloomIntensity(
   journeyProgress: number,
   effect: TunnelBloomEffect,
 ): number {
-  const { opening, travel } = effect.stages
+  const { opening, travel, lifeTransition } = effect.stages
 
   if (journeyProgress <= opening.start) return 0
   if (journeyProgress < opening.end) {
@@ -94,10 +94,18 @@ export function tunnelBloomIntensity(
     )
   }
 
+  if (journeyProgress < travel.end) {
+    return mix(
+      effect.openingIntensity,
+      effect.maxIntensity,
+      smootherstep01(segmentProgress(journeyProgress, travel)),
+    )
+  }
+
   return mix(
-    effect.openingIntensity,
     effect.maxIntensity,
-    smootherstep01(segmentProgress(journeyProgress, travel)),
+    effect.lifeIntensity,
+    smootherstep01(segmentProgress(journeyProgress, lifeTransition)),
   )
 }
 
@@ -105,7 +113,7 @@ export function chromaticAberrationOffset(
   journeyProgress: number,
   effect: ChromaticAberrationTimeline,
 ): number {
-  const { intro, build, peak, settle } = effect.stages
+  const { intro, build, peak, settle, lifeFade } = effect.stages
 
   if (journeyProgress <= intro.start) return 0
   if (journeyProgress < intro.end) {
@@ -130,10 +138,18 @@ export function chromaticAberrationOffset(
     )
   }
 
+  if (journeyProgress < settle.end) {
+    return mix(
+      effect.maxOffset,
+      effect.endOffset,
+      smootherstep01(segmentProgress(journeyProgress, settle)),
+    )
+  }
+
   return mix(
-    effect.maxOffset,
     effect.endOffset,
-    smootherstep01(segmentProgress(journeyProgress, settle)),
+    effect.lifeOffset,
+    smootherstep01(segmentProgress(journeyProgress, lifeFade)),
   )
 }
 
@@ -144,7 +160,10 @@ export function chromaticAberrationDirection(
   return mix(
     effect.directionFrom,
     effect.directionTo,
-    smootherstep01(segmentProgress(journeyProgress, effect)),
+    smootherstep01(segmentProgress(journeyProgress, {
+      start: effect.start,
+      end: effect.stages.settle.end,
+    })),
   )
 }
 

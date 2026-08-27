@@ -19,6 +19,7 @@ import {
   particleEffects,
   particleMorphs,
   type ParticleMorph,
+  worldEffects,
 } from './timeline/experienceTimeline'
 import {
   activeSegmentIndex,
@@ -208,6 +209,10 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
     if (!material) return
 
     const journey = journeyProgress.current
+    material.visible =
+      journey < worldEffects.lifeSeed.stages.backgroundFade.end
+    if (!material.visible) return
+
     const segmentIndex = activeSegmentIndex(journey, particleMorphs)
 
     if (segmentIndex !== activeSegmentRef.current) {

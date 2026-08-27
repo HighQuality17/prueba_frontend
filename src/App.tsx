@@ -2,6 +2,7 @@ import { Navbar } from './components/Navbar'
 import { Hero } from './components/Hero'
 import { ContentSection } from './components/ContentSection'
 import { CTASection } from './components/CTASection'
+import { LifeScrollSection } from './components/LifeScrollSection'
 import { Experience } from './webgl/Experience'
 
 export default function App() {
@@ -67,6 +68,7 @@ export default function App() {
           />
 
           <CTASection />
+          <LifeScrollSection />
         </main>
       </div>
     </>

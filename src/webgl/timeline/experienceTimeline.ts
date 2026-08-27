@@ -80,12 +80,30 @@ export interface EyeEmergenceEffect extends JourneyRange {
   }
 }
 
+export interface LifeSeedEffect extends JourneyRange {
+  readonly initialScale: number
+  readonly finalScale: number
+  readonly forwardDistance: number
+  readonly verticalLift: number
+  readonly pulseAmplitude: number
+  readonly stages: {
+    readonly handoff: JourneyRange
+    readonly detachment: JourneyRange
+    readonly backgroundFade: JourneyRange
+    readonly suspension: JourneyRange
+    readonly pulse: JourneyRange
+    readonly anticipation: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
+  readonly lifeIntensity: number
   readonly stages: {
     readonly opening: JourneyRange
     readonly travel: JourneyRange
+    readonly lifeTransition: JourneyRange
   }
 }
 
@@ -94,6 +112,7 @@ export interface ChromaticAberrationTimeline extends JourneyRange {
   readonly middleOffset: number
   readonly maxOffset: number
   readonly endOffset: number
+  readonly lifeOffset: number
   readonly directionFrom: number
   readonly directionTo: number
   readonly stages: {
@@ -101,6 +120,7 @@ export interface ChromaticAberrationTimeline extends JourneyRange {
     readonly build: JourneyRange
     readonly peak: JourneyRange
     readonly settle: JourneyRange
+    readonly lifeFade: JourneyRange
   }
 }
 
@@ -114,26 +134,39 @@ export interface CameraDiveEffect extends JourneyRange {
   }
 }
 
-/*
-  Central timing map for the current journey. The document's normalized
-  scroll progress is mapped through these ranges by individual visual systems.
-*/
+export const LEGACY_JOURNEY_END = 0.84
+
+function legacyRange(start: number, end: number): JourneyRange {
+  return {
+    start: start * LEGACY_JOURNEY_END,
+    end: end * LEGACY_JOURNEY_END,
+  }
+}
+
+export const journeyActs = {
+  order: legacyRange(0, 0.52),
+  breakdown: legacyRange(0.52, 0.7),
+  beyond: legacyRange(0.7, 1),
+  life: { start: LEGACY_JOURNEY_END, end: 1 },
+} as const satisfies Record<string, JourneyRange>
+
+/* All approved pre-LIFE timings are uniformly rebased by 0.84. */
 export const journeyPhases = {
-  cloudToFibonacci: { start: 0, end: 0.14 },
-  fibonacciSettle: { start: 0.14, end: 0.17 },
-  fibonacciEffectHold: { start: 0.17, end: 0.27 },
-  fibonacciToSphere: { start: 0.27, end: 0.36 },
-  sphereSettle: { start: 0.36, end: 0.39 },
-  sphereDistortionHold: { start: 0.39, end: 0.49 },
-  sphereDistortionRecovery: { start: 0.49, end: 0.52 },
-  sphereSingularityHold: { start: 0.52, end: 0.67 },
-  sphereRecovery: { start: 0.67, end: 0.7 },
-  portalDive: { start: 0.7, end: 0.84 },
-  transitionSilence: { start: 0.84, end: 0.87 },
-  sphereToHelix: { start: 0.87, end: 0.925 },
-  helixHold: { start: 0.925, end: 0.94 },
-  helixToTorus: { start: 0.94, end: 0.99 },
-  torusHold: { start: 0.99, end: 1 },
+  cloudToFibonacci: legacyRange(0, 0.14),
+  fibonacciSettle: legacyRange(0.14, 0.17),
+  fibonacciEffectHold: legacyRange(0.17, 0.27),
+  fibonacciToSphere: legacyRange(0.27, 0.36),
+  sphereSettle: legacyRange(0.36, 0.39),
+  sphereDistortionHold: legacyRange(0.39, 0.49),
+  sphereDistortionRecovery: legacyRange(0.49, 0.52),
+  sphereSingularityHold: legacyRange(0.52, 0.67),
+  sphereRecovery: legacyRange(0.67, 0.7),
+  portalDive: legacyRange(0.7, 0.84),
+  transitionSilence: legacyRange(0.84, 0.87),
+  sphereToHelix: legacyRange(0.87, 0.925),
+  helixHold: legacyRange(0.925, 0.94),
+  helixToTorus: legacyRange(0.94, 0.99),
+  torusHold: legacyRange(0.99, 1),
 } as const satisfies Record<string, JourneyRange>
 
 export const cameraEffects = {
@@ -173,13 +206,12 @@ export const particleEffects = {
     },
   },
   portalFade: {
-    start: journeyPhases.portalDive.end - 0.02,
-    end: 1,
+    ...legacyRange(0.82, 1),
     minimumOpacity: 0.015,
     stages: {
       // Crossfades against the tunnel reveal, which begins at the same point.
-      fadeOut: { start: 0.82, end: 0.875 },
-      darkHold: { start: 0.875, end: 1 },
+      fadeOut: legacyRange(0.82, 0.875),
+      darkHold: legacyRange(0.875, 1),
     },
   },
 } as const satisfies Record<
@@ -196,8 +228,7 @@ export const particleEffects = {
 */
 export const worldEffects = {
   tunnel: {
-    start: 0.82,
-    end: 1,
+    ...legacyRange(0.82, 1),
     maxTravelDistance: 26,
     symmetryFrom: 6,
     symmetryTo: 12,
@@ -206,34 +237,51 @@ export const worldEffects = {
     revealFraction: 0.3,
   },
   organicMetamorphosis: {
-    start: 0.88,
-    end: 1,
+    ...legacyRange(0.88, 1),
     maxAsymmetry: 0.07,
     idleAmplitude: 0.012,
     idleCycleSeconds: 32,
     stages: {
-      hints: { start: 0.88, end: 0.92 },
-      cellular: { start: 0.92, end: 0.96 },
-      livingCore: { start: 0.92, end: 0.96 },
+      hints: legacyRange(0.88, 0.92),
+      cellular: legacyRange(0.92, 0.96),
+      livingCore: legacyRange(0.92, 0.96),
     },
   },
   eyeEmergence: {
-    start: 0.96,
-    end: 1,
+    ...legacyRange(0.96, 1),
     stages: {
-      iris: { start: 0.96, end: 0.976 },
-      pupil: { start: 0.966, end: 0.978 },
-      glint: { start: 0.972, end: 0.978 },
-      openHold: { start: 0.978, end: 0.983 },
-      blinkClose: { start: 0.983, end: 0.989 },
-      blinkReopen: { start: 0.989, end: 0.994 },
-      reopenedHold: { start: 0.994, end: 0.997 },
-      emergence: { start: 0.997, end: 1 },
+      iris: legacyRange(0.96, 0.976),
+      pupil: legacyRange(0.966, 0.978),
+      glint: legacyRange(0.972, 0.978),
+      openHold: legacyRange(0.978, 0.983),
+      blinkClose: legacyRange(0.983, 0.989),
+      blinkReopen: legacyRange(0.989, 0.994),
+      reopenedHold: legacyRange(0.994, 0.997),
+      emergence: legacyRange(0.997, 1),
+    },
+  },
+  lifeSeed: {
+    ...journeyActs.life,
+    initialScale: 0.072,
+    finalScale: 0.2,
+    forwardDistance: 1.45,
+    verticalLift: 0.16,
+    pulseAmplitude: 0.04,
+    stages: {
+      handoff: { start: 0.84, end: 0.855 },
+      detachment: { start: 0.84, end: 0.9 },
+      backgroundFade: { start: 0.855, end: 0.93 },
+      suspension: { start: 0.93, end: 0.965 },
+      pulse: { start: 0.965, end: 0.985 },
+      anticipation: { start: 0.985, end: 1 },
     },
   },
 } as const satisfies Record<
   string,
-  TunnelEffect | OrganicMetamorphosisEffect | EyeEmergenceEffect
+  | TunnelEffect
+  | OrganicMetamorphosisEffect
+  | EyeEmergenceEffect
+  | LifeSeedEffect
 >
 
 const TUNNEL_REVEAL_END =
@@ -244,9 +292,10 @@ const TUNNEL_REVEAL_END =
 export const postEffects = {
   tunnelBloom: {
     start: worldEffects.tunnel.start,
-    end: worldEffects.tunnel.end,
+    end: journeyActs.life.end,
     openingIntensity: 0.24,
     maxIntensity: 0.68,
+    lifeIntensity: 0.46,
     stages: {
       opening: {
         start: worldEffects.tunnel.start,
@@ -256,22 +305,25 @@ export const postEffects = {
         start: TUNNEL_REVEAL_END,
         end: worldEffects.tunnel.end,
       },
+      lifeTransition: { start: 0.84, end: 0.94 },
     },
   },
   chromaticAberration: {
     start: worldEffects.tunnel.start,
-    end: worldEffects.tunnel.end,
+    end: journeyActs.life.end,
     introOffset: 0.00006,
     middleOffset: 0.00025,
     maxOffset: 0.00062,
     endOffset: 0.00048,
+    lifeOffset: 0.00008,
     directionFrom: 0.35,
     directionTo: -0.18,
     stages: {
-      intro: { start: worldEffects.tunnel.start, end: 0.88 },
-      build: { start: 0.88, end: 0.93 },
-      peak: { start: 0.93, end: 0.97 },
-      settle: { start: 0.97, end: worldEffects.tunnel.end },
+      intro: legacyRange(0.82, 0.88),
+      build: legacyRange(0.88, 0.93),
+      peak: legacyRange(0.93, 0.97),
+      settle: legacyRange(0.97, 1),
+      lifeFade: { start: 0.84, end: 0.92 },
     },
   },
 } as const satisfies Record<

@@ -51,6 +51,7 @@ uniform float uPupilStrength;
 uniform float uEyeGlint;
 uniform float uEyeBlink;
 uniform float uLifeSeed;
+uniform float uSeedHandoff;
 uniform float uStepLimit;
 uniform float uDetail;
 
@@ -502,7 +503,7 @@ vec2 tunnelSDF(vec3 p) {
     if (eyeDistance < scene.x) scene = vec2(eyeDistance, 6.0);
   }
 
-  if (uLifeSeed > 0.0001) {
+  if (uLifeSeed > 0.0001 && uSeedHandoff < 0.999) {
     // A tiny embryonic membrane separates forward from the pupil while the
     // eye remains intact behind it. Polynomial symmetry keeps map cost low.
     vec3 seedCenter = vec3(
