@@ -2,7 +2,7 @@ export function LifeScrollSection() {
   return (
     <section
       aria-hidden="true"
-      className="relative min-h-[556vh] overflow-hidden"
+      className="relative min-h-[767vh] overflow-hidden"
     />
   )
 }

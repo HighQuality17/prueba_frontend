@@ -2,6 +2,8 @@ export const alienMedusaBellVertexShader = /* glsl */ `
 uniform float uFormation;
 uniform float uContraction;
 uniform float uDetail;
+uniform float uIdle;
+uniform float uTime;
 
 varying vec3 vBellPosition;
 varying vec3 vBellNormal;
@@ -24,6 +26,9 @@ void main() {
   bellPosition.xz *= 1.0 - 0.14 * uContraction;
   bellPosition.y *= 1.0 + 0.1 * uContraction;
   bellPosition.y += lowerRim * 0.08 * uContraction;
+  float idleBreath = sin(uTime * 0.19634954);
+  bellPosition.xz *= 1.0 + 0.014 * uIdle * idleBreath;
+  bellPosition.y *= 1.0 - 0.009 * uIdle * idleBreath;
 
   vec4 worldPosition = modelMatrix * vec4(bellPosition, 1.0);
   vBellPosition = bellPosition;
@@ -37,6 +42,9 @@ export const alienMedusaBellFragmentShader = /* glsl */ `
 uniform float uFormation;
 uniform float uContraction;
 uniform float uDetail;
+uniform float uIdle;
+uniform float uTime;
+uniform float uNourishment;
 
 varying vec3 vBellPosition;
 varying vec3 vBellNormal;
@@ -76,6 +84,10 @@ void main() {
     * (0.12 + 0.18 * membraneBand);
   float backLight = pow(1.0 - abs(dot(normal, viewDirection)), 2.0);
   color += turquoise * backLight * 0.08;
+  float livingPulse = 0.5 + 0.5 * sin(uTime * 0.19634954);
+  color += mix(turquoise, warmWhite, 0.34)
+    * uNourishment
+    * (0.105 + uIdle * (0.035 + 0.04 * livingPulse));
 
   float alpha = uFormation * (0.42 + 0.28 * rim + 0.12 * lowerRim);
   gl_FragColor = vec4(color, alpha);
@@ -86,6 +98,9 @@ export const alienMedusaOrganVertexShader = /* glsl */ `
 uniform float uFormation;
 uniform float uContraction;
 uniform float uDetail;
+uniform float uIdle;
+uniform float uTime;
+uniform float uNourishment;
 
 varying vec3 vOrganPosition;
 varying vec3 vOrganNormal;
@@ -99,6 +114,10 @@ void main() {
   organPosition.xz *= 1.0 + lobes;
   organPosition.y *= 1.12 - 0.08 * uContraction;
   organPosition *= mix(0.3, 1.0, uFormation);
+  float livingPulse = sin(uTime * 0.19634954 + 0.8);
+  organPosition *= 1.0
+    + 0.018 * uIdle * livingPulse
+    + 0.012 * uNourishment;
 
   vec4 worldPosition = modelMatrix * vec4(organPosition, 1.0);
   vOrganPosition = organPosition;
@@ -111,6 +130,9 @@ void main() {
 export const alienMedusaOrganFragmentShader = /* glsl */ `
 uniform float uFormation;
 uniform float uContraction;
+uniform float uIdle;
+uniform float uTime;
+uniform float uNourishment;
 
 varying vec3 vOrganPosition;
 varying vec3 vOrganNormal;
@@ -131,6 +153,10 @@ void main() {
   color = mix(color, warmWhite, 0.34 + 0.32 * facing);
   color *= 0.62 + 0.36 * band + 0.18 * uContraction;
   color += warmWhite * rim * 0.62;
+  float livingPulse = 0.5 + 0.5 * sin(uTime * 0.19634954 + 0.8);
+  color += mix(warmWhite, amber, 0.2)
+    * uNourishment
+    * (0.2 + uIdle * (0.035 + 0.065 * livingPulse));
   gl_FragColor = vec4(color, uFormation * (0.82 + 0.14 * rim));
 }
 `
@@ -146,12 +172,19 @@ uniform float uGrowth;
 uniform float uContraction;
 uniform float uTetherOpacity;
 uniform float uDetail;
+uniform float uSwimDrag;
+uniform float uIdle;
+uniform float uTime;
+uniform float uExchangeProgress;
+uniform float uExchangeStrength;
 uniform vec3 uTetherTarget;
+uniform vec3 uSwimDirection;
 
 varying float vAcross;
 varying float vCoordinate;
 varying float vTentacleId;
 varying float vType;
+varying float vExchangeEnergy;
 varying float vVisibility;
 
 void main() {
@@ -173,6 +206,24 @@ void main() {
       * uContraction
       * (0.08 + 0.035 * aCoordinate);
     tentaclePosition.y += response * uContraction * 0.12;
+    float tailLag = smoothstep(0.08, 1.0, aCoordinate);
+    float tentaclePhase = aTentacleId * 1.618;
+    tentaclePosition -= uSwimDirection
+      * tailLag
+      * uSwimDrag
+      * (0.1 + 0.065 * aCoordinate);
+    tentaclePosition.x += tailLag
+      * (
+        0.028 * uSwimDrag * sin(tentaclePhase + aCoordinate * 4.2)
+        + 0.034 * uIdle * sin(uTime * 0.19634954 + tentaclePhase)
+      );
+    tentaclePosition.z += tailLag
+      * (
+        0.022 * uSwimDrag * cos(tentaclePhase - aCoordinate * 3.4)
+        + 0.026
+          * uIdle
+          * cos(uTime * 0.17453293 + tentaclePhase + aCoordinate * 2.0)
+      );
   }
 
   float reveal = 1.0 - smoothstep(
@@ -185,6 +236,13 @@ void main() {
   vCoordinate = aCoordinate;
   vTentacleId = aTentacleId;
   vType = aType;
+  float exchangeTravel = smoothstep(0.46, 1.0, uExchangeProgress);
+  float exchangeCenter = mix(1.08, -0.06, exchangeTravel);
+  vExchangeEnergy = tether
+    * exp(-abs(aCoordinate - exchangeCenter) * 32.0)
+    * smoothstep(0.4, 0.5, uExchangeProgress)
+    * (1.0 - smoothstep(0.96, 1.0, uExchangeProgress))
+    * uExchangeStrength;
   vVisibility = ordinary * reveal * mobileVisibility
     + tether * uTetherOpacity;
   gl_Position = projectionMatrix
@@ -198,6 +256,7 @@ varying float vAcross;
 varying float vCoordinate;
 varying float vTentacleId;
 varying float vType;
+varying float vExchangeEnergy;
 varying float vVisibility;
 
 void main() {
@@ -207,6 +266,7 @@ void main() {
   vec3 cyan = vec3(0.05, 0.78, 1.0);
   vec3 turquoise = vec3(0.015, 0.86, 0.72);
   vec3 warmWhite = vec3(1.0, 0.97, 0.82);
+  vec3 gold = vec3(1.02, 0.56, 0.08);
   float core = 1.0 - smoothstep(0.18, 0.58, abs(vAcross));
   float edge = smoothstep(0.32, 1.0, abs(vAcross));
   float parity = mod(vTentacleId, 2.0);
@@ -215,7 +275,11 @@ void main() {
   vec3 color = mix(deepViolet, filament, 0.24 + 0.42 * core + 0.16 * edge);
   float tip = smoothstep(0.72, 1.0, vCoordinate) * (1.0 - step(0.5, vType));
   color += warmWhite * tip * 0.68;
-  float alpha = vVisibility * (0.28 + 0.5 * core + 0.12 * edge);
+  color += mix(warmWhite, gold, 0.3)
+    * vExchangeEnergy
+    * (1.1 + 0.55 * core);
+  float alpha = vVisibility
+    * (0.28 + 0.5 * core + 0.12 * edge + 0.18 * vExchangeEnergy);
   gl_FragColor = vec4(color, alpha);
 }
 `

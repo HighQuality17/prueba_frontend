@@ -13,17 +13,18 @@ import {
 import { worldEffects } from '../timeline/experienceTimeline'
 import {
   segmentProgress,
+  sineSquaredEnvelope,
   smootherstep01,
 } from '../timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from '../timeline/journeyProgress'
 import { LIFE_SEED_FINAL_POSITION } from './lifeLayout'
 import {
+  ECOSYSTEM_EXCHANGE_NODE_INDEX,
   FIRST_LIFEFORM_NODE_INDEX,
-  NETWORK_X_STRETCH,
-  NETWORK_Y_STRETCH,
   PRIMARY_NETWORK_COUNT,
   networkDistance,
   primaryNetworkPoint,
+  secondaryNetworkPoint,
   type NetworkPoint,
 } from './lifeNetworkLayout'
 import {
@@ -70,26 +71,9 @@ function samplePath(
 }
 
 function secondaryPath(index: number): readonly NetworkPoint[] {
-  const startProgress = 0.58 + (index % 2) * 0.07
-  const start = primaryNetworkPoint(index, startProgress)
-  const baseAngle = (index / PRIMARY_NETWORK_COUNT) * Math.PI * 2
-  const direction = index % 2 === 0 ? 1 : -1
-  const branchAngle = baseAngle + direction * (0.46 + 0.025 * index)
-  const branchLength = 0.7 + (index % 3) * 0.12
-
-  return samplePath(SECONDARY_SAMPLES, (progress) => {
-    const curve = direction * 0.13 * Math.sin(progress * Math.PI)
-    const angle = branchAngle + curve
-    return [
-      start[0]
-        + Math.cos(angle) * branchLength * progress * NETWORK_X_STRETCH,
-      start[1]
-        + Math.sin(angle) * branchLength * progress * NETWORK_Y_STRETCH,
-      start[2]
-        + direction * 0.12 * progress
-        + 0.08 * Math.sin(progress * Math.PI),
-    ]
-  })
+  return samplePath(SECONDARY_SAMPLES, (progress) =>
+    secondaryNetworkPoint(index, progress),
+  )
 }
 
 function connectionPath(
@@ -128,9 +112,20 @@ function addRibbonPath(
   mobileVisibility: number[],
   pathHues: number[],
   birthPaths: number[],
+  ecosystemPaths: number[],
 ): void {
   const segmentCount = path.points.length - 1
   const baseWidth = path.type < 0.5 ? 0.042 : path.type < 1.5 ? 0.029 : 0.021
+  const birthPath =
+    path.type < 0.5 && path.id === FIRST_LIFEFORM_NODE_INDEX ? 1 : 0
+  const ecosystemPath =
+    birthPath > 0
+      ? 1
+      : path.type > 0.5 &&
+          path.type < 1.5 &&
+          path.id === PRIMARY_NETWORK_COUNT
+        ? 2
+        : 0
 
   for (let segment = 0; segment < segmentCount; segment++) {
     const from = path.points[segment]
@@ -184,9 +179,8 @@ function addRibbonPath(
       pathTypes.push(path.type)
       mobileVisibility.push(path.mobileVisible ? 1 : 0)
       pathHues.push((path.id % 7) / 6)
-      birthPaths.push(
-        path.type < 0.5 && path.id === FIRST_LIFEFORM_NODE_INDEX ? 1 : 0,
-      )
+      birthPaths.push(birthPath)
+      ecosystemPaths.push(ecosystemPath)
     }
   }
 }
@@ -237,6 +231,7 @@ function createNetworkData(): NetworkData {
   const mobileVisibility: number[] = []
   const pathHues: number[] = []
   const birthPaths: number[] = []
+  const ecosystemPaths: number[] = []
   for (const path of paths) {
     addRibbonPath(
       path,
@@ -248,6 +243,7 @@ function createNetworkData(): NetworkData {
       mobileVisibility,
       pathHues,
       birthPaths,
+      ecosystemPaths,
     )
   }
 
@@ -283,6 +279,10 @@ function createNetworkData(): NetworkData {
   branchGeometry.setAttribute(
     'aBirthPath',
     new BufferAttribute(new Float32Array(birthPaths), 1),
+  )
+  branchGeometry.setAttribute(
+    'aEcosystemPath',
+    new BufferAttribute(new Float32Array(ecosystemPaths), 1),
   )
 
   const nodes: NetworkNode[] = [
@@ -351,6 +351,30 @@ function createNetworkData(): NetworkData {
       1,
     ),
   )
+  nodeGeometry.setAttribute(
+    'aInteractionNode',
+    new InstancedBufferAttribute(
+      new Float32Array(
+        nodes.map((_, index) => {
+          if (index === ECOSYSTEM_EXCHANGE_NODE_INDEX) return 1
+          if (index === FIRST_LIFEFORM_NODE_INDEX) return 0.68
+          return index === 1 ? 0.52 : 0
+        }),
+      ),
+      1,
+    ),
+  )
+  nodeGeometry.setAttribute(
+    'aInteractionMobile',
+    new InstancedBufferAttribute(
+      new Float32Array(
+        nodes.map((_, index) =>
+          index === ECOSYSTEM_EXCHANGE_NODE_INDEX ? 1 : 0,
+        ),
+      ),
+      1,
+    ),
+  )
 
   return { branchGeometry, nodeGeometry, nodes }
 }
@@ -374,6 +398,8 @@ export function LifeNetwork({ journeyProgress }: LifeNetworkProps) {
       uConnectionGrowth: { value: 0 },
       uPulseProgress: { value: 0 },
       uBirthTransfer: { value: 0 },
+      uEcosystemResponse: { value: 0 },
+      uEcosystemExchange: { value: 0 },
       uOpacity: { value: 1 },
       uDetail: { value: 1 },
     }),
@@ -385,6 +411,7 @@ export function LifeNetwork({ journeyProgress }: LifeNetworkProps) {
       uPulseProgress: { value: 0 },
       uBirthActivation: { value: 0 },
       uBirthDetach: { value: 0 },
+      uEcosystemResponse: { value: 0 },
       uOpacity: { value: 1 },
       uDetail: { value: 1 },
     }),
@@ -439,6 +466,21 @@ export function LifeNetwork({ journeyProgress }: LifeNetworkProps) {
     const birthDetach = smootherstep01(
       segmentProgress(journey, lifeform.stages.detachment),
     )
+    const awakening = worldEffects.medusaAwakening
+    const response = sineSquaredEnvelope(
+      segmentProgress(journey, awakening.stages.networkResponse),
+    )
+    const ecosystemExchange = smootherstep01(
+      segmentProgress(journey, awakening.stages.energyExchange),
+    )
+    const exchangePulse = sineSquaredEnvelope(ecosystemExchange)
+    const stable = smootherstep01(
+      segmentProgress(journey, awakening.stages.stableHold),
+    )
+    const ecosystemResponse = Math.min(
+      1,
+      response + exchangePulse * 0.65 + stable * 0.14,
+    )
     const detail = isMobileRef.current ? 0 : 1
 
     branches.visible = primaryGrowth > 0.0001
@@ -450,6 +492,8 @@ export function LifeNetwork({ journeyProgress }: LifeNetworkProps) {
     branch.uConnectionGrowth.value = connectionGrowth
     branch.uPulseProgress.value = pulseProgress
     branch.uBirthTransfer.value = birthTransfer
+    branch.uEcosystemResponse.value = ecosystemResponse
+    branch.uEcosystemExchange.value = ecosystemExchange
     branch.uDetail.value = detail
 
     const node = nodeMaterial.uniforms
@@ -457,6 +501,7 @@ export function LifeNetwork({ journeyProgress }: LifeNetworkProps) {
     node.uPulseProgress.value = pulseProgress
     node.uBirthActivation.value = birthActivation
     node.uBirthDetach.value = birthDetach
+    node.uEcosystemResponse.value = ecosystemResponse
     node.uDetail.value = detail
   })
 

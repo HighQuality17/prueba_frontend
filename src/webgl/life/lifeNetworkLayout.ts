@@ -7,6 +7,7 @@ export const PRIMARY_NETWORK_COUNT = 6
 export const NETWORK_X_STRETCH = 1.7
 export const NETWORK_Y_STRETCH = 0.95
 export const FIRST_LIFEFORM_NODE_INDEX = 0
+export const ECOSYSTEM_EXCHANGE_NODE_INDEX = PRIMARY_NETWORK_COUNT
 
 const NETWORK_RADIUS = 2.45
 const PRIMARY_LENGTHS = [2.2, 1.92, 2.36, 2.05, 2.28, 1.88] as const
@@ -49,10 +50,35 @@ export function primaryNetworkPoint(
   ]
 }
 
+export function secondaryNetworkPoint(
+  index: number,
+  progress: number,
+): NetworkPoint {
+  const startProgress = 0.58 + (index % 2) * 0.07
+  const start = primaryNetworkPoint(index, startProgress)
+  const baseAngle = (index / PRIMARY_NETWORK_COUNT) * Math.PI * 2
+  const direction = index % 2 === 0 ? 1 : -1
+  const branchAngle = baseAngle + direction * (0.46 + 0.025 * index)
+  const branchLength = 0.7 + (index % 3) * 0.12
+  const curve = direction * 0.13 * Math.sin(progress * Math.PI)
+  const angle = branchAngle + curve
+
+  return [
+    start[0]
+      + Math.cos(angle) * branchLength * progress * NETWORK_X_STRETCH,
+    start[1]
+      + Math.sin(angle) * branchLength * progress * NETWORK_Y_STRETCH,
+    start[2]
+      + direction * 0.12 * progress
+      + 0.08 * Math.sin(progress * Math.PI),
+  ]
+}
+
 export const FIRST_LIFEFORM_NODE_LOCAL_POSITION = primaryNetworkPoint(
   FIRST_LIFEFORM_NODE_INDEX,
   1,
 )
+export const ECOSYSTEM_EXCHANGE_NODE_LOCAL_POSITION = secondaryNetworkPoint(0, 1)
 
 export const FIRST_LIFEFORM_NODE_WORLD_POSITION = {
   x: LIFE_SEED_FINAL_POSITION.x
@@ -61,4 +87,16 @@ export const FIRST_LIFEFORM_NODE_WORLD_POSITION = {
     + FIRST_LIFEFORM_NODE_LOCAL_POSITION[1] * worldEffects.lifeSeed.finalScale,
   z: LIFE_SEED_FINAL_POSITION.z
     + FIRST_LIFEFORM_NODE_LOCAL_POSITION[2] * worldEffects.lifeSeed.finalScale,
+} as const
+
+export const ECOSYSTEM_EXCHANGE_NODE_WORLD_POSITION = {
+  x: LIFE_SEED_FINAL_POSITION.x
+    + ECOSYSTEM_EXCHANGE_NODE_LOCAL_POSITION[0]
+      * worldEffects.lifeSeed.finalScale,
+  y: LIFE_SEED_FINAL_POSITION.y
+    + ECOSYSTEM_EXCHANGE_NODE_LOCAL_POSITION[1]
+      * worldEffects.lifeSeed.finalScale,
+  z: LIFE_SEED_FINAL_POSITION.z
+    + ECOSYSTEM_EXCHANGE_NODE_LOCAL_POSITION[2]
+      * worldEffects.lifeSeed.finalScale,
 } as const

@@ -131,6 +131,19 @@ export interface FirstLifeformEffect extends JourneyRange {
   }
 }
 
+export interface MedusaAwakeningEffect extends JourneyRange {
+  readonly stages: {
+    readonly awakening: JourneyRange
+    readonly secondContraction: JourneyRange
+    readonly swimmingImpulse: JourneyRange
+    readonly drift: JourneyRange
+    readonly ecosystemProximity: JourneyRange
+    readonly networkResponse: JourneyRange
+    readonly energyExchange: JourneyRange
+    readonly stableHold: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
@@ -169,10 +182,18 @@ export interface CameraDiveEffect extends JourneyRange {
   }
 }
 
-export const PHASE_21_JOURNEY_END = 0.84
+export const PHASE_22_JOURNEY_END = 0.84
+export const PHASE_21_JOURNEY_END = 0.84 * PHASE_22_JOURNEY_END
 export const PHASE_20_JOURNEY_END = 0.84 * PHASE_21_JOURNEY_END
 export const PHASE_19_JOURNEY_END = 0.84 * PHASE_20_JOURNEY_END
 export const LEGACY_JOURNEY_END = 0.84 * PHASE_19_JOURNEY_END
+
+function phase22Range(start: number, end: number): JourneyRange {
+  return {
+    start: start * PHASE_22_JOURNEY_END,
+    end: end * PHASE_22_JOURNEY_END,
+  }
+}
 
 function phase21Range(start: number, end: number): JourneyRange {
   return {
@@ -358,17 +379,30 @@ export const worldEffects = {
     },
   },
   firstLifeform: {
-    start: PHASE_21_JOURNEY_END,
+    ...phase22Range(0.84, 1),
+    stages: {
+      nodeActivation: phase22Range(0.84, 0.865),
+      energyTransfer: phase22Range(0.845, 0.88),
+      bellFormation: phase22Range(0.865, 0.91),
+      tentacleGrowth: phase22Range(0.895, 0.94),
+      detachment: phase22Range(0.92, 0.97),
+      connectionRelease: phase22Range(0.955, 0.98),
+      contraction: phase22Range(0.97, 0.992),
+      freeHold: phase22Range(0.992, 1),
+    },
+  },
+  medusaAwakening: {
+    start: PHASE_22_JOURNEY_END,
     end: 1,
     stages: {
-      nodeActivation: { start: 0.84, end: 0.865 },
-      energyTransfer: { start: 0.845, end: 0.88 },
-      bellFormation: { start: 0.865, end: 0.91 },
-      tentacleGrowth: { start: 0.895, end: 0.94 },
-      detachment: { start: 0.92, end: 0.97 },
-      connectionRelease: { start: 0.955, end: 0.98 },
-      contraction: { start: 0.97, end: 0.992 },
-      freeHold: { start: 0.992, end: 1 },
+      awakening: { start: 0.84, end: 0.865 },
+      secondContraction: { start: 0.855, end: 0.89 },
+      swimmingImpulse: { start: 0.875, end: 0.92 },
+      drift: { start: 0.91, end: 0.95 },
+      ecosystemProximity: { start: 0.94, end: 0.965 },
+      networkResponse: { start: 0.95, end: 0.978 },
+      energyExchange: { start: 0.968, end: 0.99 },
+      stableHold: { start: 0.99, end: 1 },
     },
   },
 } as const satisfies Record<
@@ -380,6 +414,7 @@ export const worldEffects = {
   | SeedGerminationEffect
   | LifeNetworkEffect
   | FirstLifeformEffect
+  | MedusaAwakeningEffect
 >
 
 const TUNNEL_REVEAL_END =

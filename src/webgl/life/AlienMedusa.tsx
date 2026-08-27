@@ -26,7 +26,10 @@ import {
   alienMedusaTentacleFragmentShader,
   alienMedusaTentacleVertexShader,
 } from './alienMedusaShader'
-import { FIRST_LIFEFORM_NODE_WORLD_POSITION } from './lifeNetworkLayout'
+import {
+  ECOSYSTEM_EXCHANGE_NODE_WORLD_POSITION,
+  FIRST_LIFEFORM_NODE_WORLD_POSITION,
+} from './lifeNetworkLayout'
 
 type MedusaPoint = readonly [number, number, number]
 
@@ -37,9 +40,44 @@ const MEDUSA_FINAL_SCALE = 0.105
 const MEDUSA_DETACH_OFFSET = { x: 0.1, y: 0.14, z: 0.36 } as const
 const MOBILE_TENTACLES = new Set([0, 2, 4])
 const TENTACLE_LENGTHS = [1.42, 1.22, 1.58, 1.34, 1.5, 1.26] as const
+const MEDUSA_SWIM_CONTROL_1: MedusaPoint = [-0.02, 0.045, 0.015]
+const MEDUSA_SWIM_CONTROL_2: MedusaPoint = [-0.12, 0.09, -0.035]
+const MEDUSA_SWIM_END: MedusaPoint = [-0.18, 0.075, -0.095]
+const MEDUSA_SWIM_RANGE = {
+  start: worldEffects.medusaAwakening.stages.swimmingImpulse.start,
+  end: worldEffects.medusaAwakening.stages.drift.end,
+} as const
 
 function mix(from: number, to: number, progress: number): number {
   return from + (to - from) * progress
+}
+
+function cubicBezierCoordinate(
+  firstControl: number,
+  secondControl: number,
+  end: number,
+  progress: number,
+): number {
+  const inverse = 1 - progress
+  return (
+    3 * inverse * inverse * progress * firstControl
+    + 3 * inverse * progress * progress * secondControl
+    + progress * progress * progress * end
+  )
+}
+
+function cubicBezierDerivative(
+  firstControl: number,
+  secondControl: number,
+  end: number,
+  progress: number,
+): number {
+  const inverse = 1 - progress
+  return (
+    3 * inverse * inverse * firstControl
+    + 6 * inverse * progress * (secondControl - firstControl)
+    + 3 * progress * progress * (end - secondControl)
+  )
 }
 
 function tentaclePoint(index: number, progress: number): MedusaPoint {
@@ -220,6 +258,9 @@ export function AlienMedusa({ journeyProgress }: AlienMedusaProps) {
       uFormation: { value: 0 },
       uContraction: { value: 0 },
       uDetail: { value: 1 },
+      uIdle: { value: 0 },
+      uTime: { value: 0 },
+      uNourishment: { value: 0 },
     }),
     [],
   )
@@ -228,6 +269,9 @@ export function AlienMedusa({ journeyProgress }: AlienMedusaProps) {
       uFormation: { value: 0 },
       uContraction: { value: 0 },
       uDetail: { value: 1 },
+      uIdle: { value: 0 },
+      uTime: { value: 0 },
+      uNourishment: { value: 0 },
     }),
     [],
   )
@@ -239,12 +283,18 @@ export function AlienMedusa({ journeyProgress }: AlienMedusaProps) {
       uContraction: { value: 0 },
       uTetherOpacity: { value: 0 },
       uDetail: { value: 1 },
+      uSwimDrag: { value: 0 },
+      uIdle: { value: 0 },
+      uTime: { value: 0 },
+      uExchangeProgress: { value: 0 },
+      uExchangeStrength: { value: 0 },
       uTetherTarget: { value: new Vector3() },
+      uSwimDirection: { value: new Vector3(-1, 0, 0) },
     }),
     [],
   )
 
-  useFrame(() => {
+  useFrame((state) => {
     const group = groupRef.current
     const bellMaterial = bellMaterialRef.current
     const organ = organRef.current
@@ -261,62 +311,169 @@ export function AlienMedusa({ journeyProgress }: AlienMedusaProps) {
     ) return
 
     const journey = journeyProgress.current
-    const effect = worldEffects.firstLifeform
+    const birthEffect = worldEffects.firstLifeform
+    const awakeningEffect = worldEffects.medusaAwakening
     const formation = smootherstep01(
-      segmentProgress(journey, effect.stages.bellFormation),
+      segmentProgress(journey, birthEffect.stages.bellFormation),
     )
     const tentacleGrowth = smootherstep01(
-      segmentProgress(journey, effect.stages.tentacleGrowth),
+      segmentProgress(journey, birthEffect.stages.tentacleGrowth),
     )
     const detachment = smootherstep01(
-      segmentProgress(journey, effect.stages.detachment),
+      segmentProgress(journey, birthEffect.stages.detachment),
     )
     const connectionRelease = smootherstep01(
-      segmentProgress(journey, effect.stages.connectionRelease),
+      segmentProgress(journey, birthEffect.stages.connectionRelease),
     )
     const contractionLocal = segmentProgress(
       journey,
-      effect.stages.contraction,
+      birthEffect.stages.contraction,
     )
-    const contraction = sineSquaredEnvelope(contractionLocal)
+    const birthContraction = sineSquaredEnvelope(contractionLocal)
+    const secondContraction = 0.5
+      * sineSquaredEnvelope(
+        segmentProgress(journey, awakeningEffect.stages.secondContraction),
+      )
+    const contraction = Math.min(1, birthContraction + secondContraction)
     const locomotion = smootherstep01(contractionLocal)
+    const awakening = smootherstep01(
+      segmentProgress(journey, awakeningEffect.stages.awakening),
+    )
+    const swimmingImpulse = smootherstep01(
+      segmentProgress(journey, awakeningEffect.stages.swimmingImpulse),
+    )
+    const drift = smootherstep01(
+      segmentProgress(journey, awakeningEffect.stages.drift),
+    )
+    const swimProgress = Math.min(1, swimmingImpulse * 0.72 + drift * 0.28)
+    const swimDrag = sineSquaredEnvelope(
+      segmentProgress(journey, MEDUSA_SWIM_RANGE),
+    )
+    const proximity = smootherstep01(
+      segmentProgress(journey, awakeningEffect.stages.ecosystemProximity),
+    )
+    const exchangeProgress = smootherstep01(
+      segmentProgress(journey, awakeningEffect.stages.energyExchange),
+    )
+    const stableIdle = smootherstep01(
+      segmentProgress(journey, awakeningEffect.stages.stableHold),
+    )
+    const nourishmentArrival = smootherstep01(
+      (exchangeProgress - 0.72) / 0.2,
+    )
+    const nourishment = awakening * 0.08 + nourishmentArrival * 0.92
 
     group.visible = formation > 0.0001
     if (!group.visible) return
 
     const scale = mix(MEDUSA_INITIAL_SCALE, MEDUSA_FINAL_SCALE, formation)
+    const swimX = cubicBezierCoordinate(
+      MEDUSA_SWIM_CONTROL_1[0],
+      MEDUSA_SWIM_CONTROL_2[0],
+      MEDUSA_SWIM_END[0],
+      swimProgress,
+    )
+    const swimY = cubicBezierCoordinate(
+      MEDUSA_SWIM_CONTROL_1[1],
+      MEDUSA_SWIM_CONTROL_2[1],
+      MEDUSA_SWIM_END[1],
+      swimProgress,
+    )
+    const swimZ = cubicBezierCoordinate(
+      MEDUSA_SWIM_CONTROL_1[2],
+      MEDUSA_SWIM_CONTROL_2[2],
+      MEDUSA_SWIM_END[2],
+      swimProgress,
+    )
     group.scale.setScalar(scale)
     group.position.set(
       FIRST_LIFEFORM_NODE_WORLD_POSITION.x
-        + MEDUSA_DETACH_OFFSET.x * detachment,
+        + MEDUSA_DETACH_OFFSET.x * detachment
+        + swimX,
       FIRST_LIFEFORM_NODE_WORLD_POSITION.y
         + MEDUSA_DETACH_OFFSET.y * detachment
-        + 0.025 * locomotion,
+        + 0.025 * locomotion
+        + swimY,
       FIRST_LIFEFORM_NODE_WORLD_POSITION.z
         + MEDUSA_DETACH_OFFSET.z * detachment
-        + 0.08 * locomotion,
+        + 0.08 * locomotion
+        + swimZ,
     )
+    group.rotation.x = 0.035 * swimDrag
+    group.rotation.z = -0.065 * swimDrag
+
+    const elapsedTime = state.clock.elapsedTime
 
     const detail = isMobileRef.current ? 0 : 1
     bellMaterial.uniforms.uFormation.value = formation
     bellMaterial.uniforms.uContraction.value = contraction
     bellMaterial.uniforms.uDetail.value = detail
+    bellMaterial.uniforms.uIdle.value = stableIdle
+    bellMaterial.uniforms.uTime.value = elapsedTime
+    bellMaterial.uniforms.uNourishment.value = nourishment
 
     organ.visible = formation > 0.08
     organMaterial.uniforms.uFormation.value = formation
     organMaterial.uniforms.uContraction.value = contraction
     organMaterial.uniforms.uDetail.value = detail
+    organMaterial.uniforms.uIdle.value = stableIdle
+    organMaterial.uniforms.uTime.value = elapsedTime
+    organMaterial.uniforms.uNourishment.value = nourishment
 
     tentacles.visible = tentacleGrowth > 0.0001 || detachment > 0.0001
     const tentacle = tentacleMaterial.uniforms
+    const birthTether = detachment * (1 - connectionRelease)
+    const exchangeTether = proximity * (1 - stableIdle)
     tentacle.uGrowth.value = tentacleGrowth
     tentacle.uContraction.value = contraction
-    tentacle.uTetherOpacity.value = detachment * (1 - connectionRelease)
+    tentacle.uTetherOpacity.value = Math.max(birthTether, exchangeTether * 0.72)
     tentacle.uDetail.value = detail
+    tentacle.uSwimDrag.value = swimDrag
+    tentacle.uIdle.value = stableIdle
+    tentacle.uTime.value = elapsedTime
+    tentacle.uExchangeProgress.value = exchangeProgress
+    tentacle.uExchangeStrength.value = exchangeTether
+    const swimDirection = tentacle.uSwimDirection.value as Vector3
+    const swimDirectionX = cubicBezierDerivative(
+      MEDUSA_SWIM_CONTROL_1[0],
+      MEDUSA_SWIM_CONTROL_2[0],
+      MEDUSA_SWIM_END[0],
+      swimProgress,
+    )
+    const swimDirectionY = cubicBezierDerivative(
+      MEDUSA_SWIM_CONTROL_1[1],
+      MEDUSA_SWIM_CONTROL_2[1],
+      MEDUSA_SWIM_END[1],
+      swimProgress,
+    )
+    const swimDirectionZ = cubicBezierDerivative(
+      MEDUSA_SWIM_CONTROL_1[2],
+      MEDUSA_SWIM_CONTROL_2[2],
+      MEDUSA_SWIM_END[2],
+      swimProgress,
+    )
+    swimDirection
+      .set(swimDirectionX, swimDirectionY, swimDirectionZ)
+      .normalize()
+    const tetherTargetX = mix(
+      FIRST_LIFEFORM_NODE_WORLD_POSITION.x,
+      ECOSYSTEM_EXCHANGE_NODE_WORLD_POSITION.x,
+      proximity,
+    )
+    const tetherTargetY = mix(
+      FIRST_LIFEFORM_NODE_WORLD_POSITION.y,
+      ECOSYSTEM_EXCHANGE_NODE_WORLD_POSITION.y,
+      proximity,
+    )
+    const tetherTargetZ = mix(
+      FIRST_LIFEFORM_NODE_WORLD_POSITION.z,
+      ECOSYSTEM_EXCHANGE_NODE_WORLD_POSITION.z,
+      proximity,
+    )
     ;(tentacle.uTetherTarget.value as Vector3).set(
-      (FIRST_LIFEFORM_NODE_WORLD_POSITION.x - group.position.x) / scale,
-      (FIRST_LIFEFORM_NODE_WORLD_POSITION.y - group.position.y) / scale,
-      (FIRST_LIFEFORM_NODE_WORLD_POSITION.z - group.position.z) / scale,
+      (tetherTargetX - group.position.x) / scale,
+      (tetherTargetY - group.position.y) / scale,
+      (tetherTargetZ - group.position.z) / scale,
     )
   })
 
