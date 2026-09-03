@@ -70,8 +70,6 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
       uPupilStrength: { value: 0 },
       uEyeGlint: { value: 0 },
       uEyeBlink: { value: 0 },
-      uLifeSeed: { value: 0 },
-      uSeedHandoff: { value: 0 },
       uOrganicAsymmetry: {
         value: worldEffects.organicMetamorphosis.maxAsymmetry,
       },
@@ -110,14 +108,14 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
     const effect = worldEffects.tunnel
     const local = segmentProgress(journey, effect)
     const revealRaw = clamp01(local / effect.revealFraction)
-    const life = worldEffects.lifeSeed
+    const sacredGeometry = worldEffects.sacredGeometry
     const tunnelFade = smootherstep01(
-      segmentProgress(journey, life.stages.backgroundFade),
+      segmentProgress(journey, sacredGeometry.stages.eyeIntegration),
     )
 
     // Skip the raymarch before the portal and after LIFE owns the frame.
     material.visible =
-      revealRaw > 0.0005 && journey < life.stages.backgroundFade.end
+      revealRaw > 0.0005 && journey < sacredGeometry.stages.eyeIntegration.end
     if (!material.visible) return
 
     const reveal = smootherstep01(revealRaw)
@@ -163,12 +161,6 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
       segmentProgress(journey, eye.stages.blinkReopen),
     )
     u.uEyeBlink.value = blinkClose * (1 - blinkReopen)
-    u.uLifeSeed.value = smootherstep01(
-      segmentProgress(journey, eye.stages.emergence),
-    )
-    u.uSeedHandoff.value = smootherstep01(
-      segmentProgress(journey, life.stages.handoff),
-    )
     u.uOrganicPulse.value =
       1 +
       organic.idleAmplitude *

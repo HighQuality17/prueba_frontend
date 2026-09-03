@@ -144,6 +144,19 @@ export interface MedusaAwakeningEffect extends JourneyRange {
   }
 }
 
+export interface SacredGeometryEffect extends JourneyRange {
+  readonly stages: {
+    readonly birth: JourneyRange
+    readonly eyeIntegration: JourneyRange
+    readonly expansion: JourneyRange
+    readonly fullBloom: JourneyRange
+    readonly tiger: JourneyRange
+    readonly serpent: JourneyRange
+    readonly eagle: JourneyRange
+    readonly finalHold: JourneyRange
+  }
+}
+
 export interface TunnelBloomEffect extends JourneyRange {
   readonly openingIntensity: number
   readonly maxIntensity: number
@@ -340,6 +353,21 @@ export const worldEffects = {
       emergence: legacyRange(0.997, 1),
     },
   },
+  sacredGeometry: {
+    start: legacyRange(0.997, 1).start,
+    end: 1,
+    stages: {
+      // The first diagram appears during the approved eye's final emergence.
+      birth: { start: legacyRange(0.997, 1).start, end: 0.475 },
+      eyeIntegration: { start: LEGACY_JOURNEY_END, end: 0.5 },
+      expansion: { start: 0.445, end: 0.61 },
+      fullBloom: { start: 0.565, end: 0.7 },
+      tiger: { start: 0.68, end: 0.8 },
+      serpent: { start: 0.78, end: 0.9 },
+      eagle: { start: 0.88, end: 0.98 },
+      finalHold: { start: 0.97, end: 1 },
+    },
+  },
   lifeSeed: {
     ...approvedRange(0.84, 1),
     initialScale: 0.072,
@@ -410,6 +438,7 @@ export const worldEffects = {
   | TunnelEffect
   | OrganicMetamorphosisEffect
   | EyeEmergenceEffect
+  | SacredGeometryEffect
   | LifeSeedEffect
   | SeedGerminationEffect
   | LifeNetworkEffect

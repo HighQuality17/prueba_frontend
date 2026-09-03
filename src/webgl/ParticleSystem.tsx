@@ -27,6 +27,7 @@ import {
   segmentProgress,
   sineCycle,
   sineSquaredEnvelope,
+  smootherstep01,
   singularityBurstDistance,
   singularityEnergy,
   singularityRadialScale,
@@ -210,7 +211,7 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
 
     const journey = journeyProgress.current
     material.visible =
-      journey < worldEffects.lifeSeed.stages.backgroundFade.end
+      journey < worldEffects.sacredGeometry.stages.eyeIntegration.end
     if (!material.visible) return
 
     const segmentIndex = activeSegmentIndex(journey, particleMorphs)
@@ -275,10 +276,15 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
       singularityProgress,
       singularityEffect,
     )
-    material.uniforms.uParticleOpacity.value = portalParticleOpacity(
-      journey,
-      particleEffects.portalFade,
+    const geometryHandoff = smootherstep01(
+      segmentProgress(
+        journey,
+        worldEffects.sacredGeometry.stages.eyeIntegration,
+      ),
     )
+    material.uniforms.uParticleOpacity.value =
+      portalParticleOpacity(journey, particleEffects.portalFade) *
+      (1 - geometryHandoff)
   })
 
   // Composition bias: the cloud sits slightly right of center,
