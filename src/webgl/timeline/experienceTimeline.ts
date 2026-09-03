@@ -150,11 +150,21 @@ export interface SacredGeometryEffect extends JourneyRange {
     readonly eyeIntegration: JourneyRange
     readonly expansion: JourneyRange
     readonly fullBloom: JourneyRange
+    readonly geometryHold: JourneyRange
     readonly tiger: JourneyRange
+    readonly tigerHold: JourneyRange
     readonly serpent: JourneyRange
+    readonly serpentHold: JourneyRange
     readonly eagle: JourneyRange
+    readonly eagleHold: JourneyRange
     readonly finalHold: JourneyRange
   }
+}
+
+export interface EditorialStoryEffect extends JourneyRange {
+  readonly enter: JourneyRange
+  readonly hold: JourneyRange
+  readonly exit: JourneyRange
 }
 
 export interface TunnelBloomEffect extends JourneyRange {
@@ -358,14 +368,18 @@ export const worldEffects = {
     end: 1,
     stages: {
       // The first diagram appears during the approved eye's final emergence.
-      birth: { start: legacyRange(0.997, 1).start, end: 0.475 },
-      eyeIntegration: { start: LEGACY_JOURNEY_END, end: 0.5 },
-      expansion: { start: 0.445, end: 0.61 },
-      fullBloom: { start: 0.565, end: 0.7 },
-      tiger: { start: 0.68, end: 0.8 },
-      serpent: { start: 0.78, end: 0.9 },
-      eagle: { start: 0.88, end: 0.98 },
-      finalHold: { start: 0.97, end: 1 },
+      birth: { start: legacyRange(0.997, 1).start, end: 0.49 },
+      eyeIntegration: { start: LEGACY_JOURNEY_END, end: 0.515 },
+      expansion: { start: 0.445, end: 0.625 },
+      fullBloom: { start: 0.54, end: 0.62 },
+      geometryHold: { start: 0.625, end: 0.655 },
+      tiger: { start: 0.655, end: 0.7 },
+      tigerHold: { start: 0.7, end: 0.79 },
+      serpent: { start: 0.79, end: 0.835 },
+      serpentHold: { start: 0.835, end: 0.88 },
+      eagle: { start: 0.88, end: 0.925 },
+      eagleHold: { start: 0.925, end: 1 },
+      finalHold: { start: 0.965, end: 1 },
     },
   },
   lifeSeed: {
@@ -445,6 +459,58 @@ export const worldEffects = {
   | FirstLifeformEffect
   | MedusaAwakeningEffect
 >
+
+export const editorialStoryEffects = {
+  origin: {
+    start: 0.06,
+    end: 0.17,
+    enter: { start: 0.06, end: 0.078 },
+    hold: { start: 0.078, end: 0.152 },
+    exit: { start: 0.152, end: 0.17 },
+  },
+  ayahuasca: {
+    start: 0.245,
+    end: 0.375,
+    enter: { start: 0.245, end: 0.265 },
+    hold: { start: 0.265, end: 0.355 },
+    exit: { start: 0.355, end: 0.375 },
+  },
+  psilocybin: {
+    start: 0.345,
+    end: 0.445,
+    enter: { start: 0.345, end: 0.363 },
+    hold: { start: 0.363, end: 0.427 },
+    exit: { start: 0.427, end: 0.445 },
+  },
+  geometry: {
+    start: 0.405,
+    end: 0.68,
+    enter: { start: 0.405, end: 0.45 },
+    hold: { start: 0.45, end: 0.635 },
+    exit: { start: 0.635, end: 0.68 },
+  },
+  tiger: {
+    start: 0.645,
+    end: 0.825,
+    enter: { start: 0.645, end: 0.675 },
+    hold: { start: 0.675, end: 0.795 },
+    exit: { start: 0.795, end: 0.825 },
+  },
+  serpent: {
+    start: 0.77,
+    end: 0.91,
+    enter: { start: 0.77, end: 0.795 },
+    hold: { start: 0.795, end: 0.882 },
+    exit: { start: 0.882, end: 0.91 },
+  },
+  eagle: {
+    start: 0.86,
+    end: 1,
+    enter: { start: 0.86, end: 0.885 },
+    hold: { start: 0.885, end: 0.975 },
+    exit: { start: 0.975, end: 1 },
+  },
+} as const satisfies Record<string, EditorialStoryEffect>
 
 const TUNNEL_REVEAL_END =
   worldEffects.tunnel.start +

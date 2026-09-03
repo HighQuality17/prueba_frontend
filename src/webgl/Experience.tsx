@@ -7,7 +7,11 @@ import { SacredGeometryField } from './geometry/SacredGeometryField'
 import { JourneyPostProcessing } from './postprocessing/JourneyPostProcessing'
 import { ProceduralTunnel } from './tunnel/ProceduralTunnel'
 import type { JourneyProgressRef } from './timeline/journeyProgress'
-import { useJourneyScroll } from './timeline/useJourneyScroll'
+import {
+  advanceJourneyScroll,
+  publishJourneyProgress,
+  useJourneyScroll,
+} from './timeline/useJourneyScroll'
 
 const JOURNEY_DAMPING = 7
 const ENDPOINT_EPSILON = 0.00001
@@ -26,6 +30,7 @@ function RenderCadenceController() {
 
     const tick = (timestamp: number) => {
       animationFrameId = requestAnimationFrame(tick)
+      advanceJourneyScroll(timestamp)
 
       if (startTime === null || previousRafTime === null) {
         startTime = timestamp
@@ -61,6 +66,8 @@ function JourneyProgressSmoother({
   rawProgress,
   visualProgress,
 }: JourneyProgressSmootherProps) {
+  const lastPublishedProgress = useRef(-1)
+
   useFrame((_, delta) => {
     const raw = rawProgress.current
     const target =
@@ -76,8 +83,13 @@ function JourneyProgressSmoother({
       delta,
     )
 
-    visualProgress.current =
-      Math.abs(next - target) <= SETTLE_EPSILON ? target : next
+    const visual = Math.abs(next - target) <= SETTLE_EPSILON ? target : next
+    visualProgress.current = visual
+
+    if (Math.abs(visual - lastPublishedProgress.current) > SETTLE_EPSILON) {
+      lastPublishedProgress.current = visual
+      publishJourneyProgress(visual)
+    }
   }, -100)
 
   return null

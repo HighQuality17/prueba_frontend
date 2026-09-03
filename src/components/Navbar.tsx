@@ -1,18 +1,19 @@
 import { useState } from 'react'
 
 const NAV_LINKS = [
-  { label: 'Manifesto', href: '#manifesto' },
-  { label: 'Practice', href: '#practice' },
-  { label: 'Field Notes', href: '#notes' },
+  { label: 'Origen', href: '#origen' },
+  { label: 'Medicinas', href: '#medicinas' },
+  { label: 'Integración', href: '#integracion' },
+  { label: 'Contacto', href: '#contacto' },
 ]
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <header className="fixed inset-x-0 top-0 z-20">
+    <header className="site-header fixed inset-x-0 top-0 z-20">
       <nav
-        aria-label="Primary"
+        aria-label="Navegación principal"
         className="mx-auto flex max-w-page items-center justify-between px-6 py-30 md:px-60"
       >
         <a href="#top" className="flex items-center gap-12">
@@ -23,10 +24,11 @@ export function Navbar() {
             fill="none"
             aria-hidden="true"
           >
-            <path d="M9 1L17 15H1L9 1Z" fill="#8052ff" />
+            <circle cx="9" cy="9" r="7.25" stroke="currentColor" />
+            <path d="M9 2.5V15.5M2.5 9H15.5" stroke="currentColor" />
           </svg>
           <span className="text-nav-label tracking-nav-label font-semibold uppercase text-bone-white">
-            Prisma
+            Umbral
           </span>
         </a>
 
@@ -41,8 +43,8 @@ export function Navbar() {
         </ul>
 
         <div className="flex items-center gap-18">
-          <a href="#join" className="btn-primary">
-            Join Us
+          <a href="#contacto" className="btn-primary nav-cta">
+            Conocer el espacio
           </a>
           <button
             type="button"
@@ -51,7 +53,7 @@ export function Navbar() {
             aria-controls="mobile-menu"
             onClick={() => setMenuOpen((open) => !open)}
           >
-            {menuOpen ? 'Close' : 'Menu'}
+            {menuOpen ? 'Cerrar' : 'Menú'}
           </button>
         </div>
       </nav>
