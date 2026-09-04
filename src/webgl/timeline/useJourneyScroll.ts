@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
+import { shouldReduceMotion } from '../motionPreferences'
 import type { JourneyProgressRef } from './journeyProgress'
 
 gsap.registerPlugin(ScrollTrigger)
@@ -55,10 +56,7 @@ export function useJourneyScroll(): JourneyProgressRef {
     const prefersReducedMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches
-    const ignoreReducedMotion =
-      import.meta.env.VITE_IGNORE_REDUCED_MOTION === 'true'
-
-    if (prefersReducedMotion && !ignoreReducedMotion) {
+    if (shouldReduceMotion(prefersReducedMotion)) {
       rawJourneyProgress.current = 0
       publishJourneyProgress(0)
       return

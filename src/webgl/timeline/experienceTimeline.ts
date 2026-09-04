@@ -18,6 +18,15 @@ export interface ProceduralDistortionEffect extends JourneyRange {
   readonly maxStrength: number
 }
 
+export interface PointerMagnificationEffect extends JourneyRange {
+  readonly radius: number
+  readonly depthStrength: number
+  readonly sizeStrength: number
+  readonly positionScale: number
+  readonly damping: number
+  readonly activationDamping: number
+}
+
 export interface SingularityEffect extends JourneyRange {
   readonly minimumScale: number
   readonly maxBurstDistance: number
@@ -285,7 +294,24 @@ export const cameraEffects = {
   },
 } as const satisfies Record<string, CameraDiveEffect>
 
+export const POINTER_LENS_RADIUS = 0.22
+export const POINTER_LENS_DEPTH = 0.64
+export const POINTER_LENS_SCALE = 0.42
+export const POINTER_LENS_POSITION_SCALE = 0.1
+export const POINTER_LENS_DAMPING = 16
+export const POINTER_LENS_ACTIVATION_DAMPING = 10
+
 export const particleEffects = {
+  pointerMagnification: {
+    // Full through the settled sphere, then removed during fractal distortion.
+    ...journeyPhases.sphereDistortionHold,
+    radius: POINTER_LENS_RADIUS,
+    depthStrength: POINTER_LENS_DEPTH,
+    sizeStrength: POINTER_LENS_SCALE,
+    positionScale: POINTER_LENS_POSITION_SCALE,
+    damping: POINTER_LENS_DAMPING,
+    activationDamping: POINTER_LENS_ACTIVATION_DAMPING,
+  },
   fibonacciBreath: {
     ...journeyPhases.fibonacciEffectHold,
     amplitude: 0.6,
@@ -321,6 +347,7 @@ export const particleEffects = {
   string,
   | RadialScaleEffect
   | ProceduralDistortionEffect
+  | PointerMagnificationEffect
   | SingularityEffect
   | PortalFadeEffect
 >

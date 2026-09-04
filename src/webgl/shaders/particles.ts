@@ -2,6 +2,13 @@ export const particlesVertexShader = /* glsl */ `
 uniform float uTime;
 uniform float uPixelRatio;
 uniform float uMorphProgress;
+uniform vec2 uPointer;
+uniform float uPointerActive;
+uniform float uPointerRadius;
+uniform float uPointerDepthStrength;
+uniform float uPointerSizeStrength;
+uniform float uPointerPositionScale;
+uniform float uViewportAspect;
 uniform float uRadialScale;
 uniform float uDistortionStrength;
 uniform float uDistortionPhase;
@@ -222,10 +229,61 @@ void main() {
   pos.z += sin(t * 0.5 + aSeed * 78.233 + base.x * 1.1) * 0.05 * amplitude;
 
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+
+  // Evaluate an optical lens in aspect-corrected screen space. Forward travel
+  // follows the particle's view ray, while local spacing scales around the
+  // pointer rather than applying a fixed-length repulsion.
+  vec4 initialClipPosition = projectionMatrix * mvPosition;
+  vec2 particleNdc = initialClipPosition.xy
+    / max(initialClipPosition.w, 0.0001);
+  vec2 pointerDelta = particleNdc - uPointer;
+  vec2 correctedDelta = vec2(
+    pointerDelta.x * uViewportAspect,
+    pointerDelta.y
+  );
+  float pointerDistance = length(correctedDelta);
+  float pointerInfluence = 1.0 - smoothstep(
+    uPointerRadius * 0.12,
+    uPointerRadius,
+    pointerDistance
+  );
+  pointerInfluence = pointerInfluence
+    * pointerInfluence
+    * (3.0 - 2.0 * pointerInfluence)
+    * uPointerActive;
+
+  float availableDepth = max(-mvPosition.z - 0.75, 0.0);
+  float depthTravel = min(
+    uPointerDepthStrength * pointerInfluence,
+    availableDepth
+  );
+  float viewRayScale = 1.0
+    - depthTravel / max(-mvPosition.z, 0.0001);
+  mvPosition.xy *= viewRayScale;
+  mvPosition.z += depthTravel;
+
+  // Preserve the original projected anchor after depth travel, then magnify
+  // the local arrangement by at most 1 + uPointerPositionScale.
+  vec2 correctedLensOffset = correctedDelta
+    * uPointerPositionScale
+    * pointerInfluence;
+  vec2 ndcLensOffset = vec2(
+    correctedLensOffset.x / uViewportAspect,
+    correctedLensOffset.y
+  );
+  mvPosition.xy += ndcLensOffset
+    * -mvPosition.z
+    / vec2(projectionMatrix[0][0], projectionMatrix[1][1]);
+
   gl_Position = projectionMatrix * mvPosition;
 
   float energySize = 1.0 + uEnergyIntensity * 0.6;
-  gl_PointSize = aSize * energySize * uPixelRatio * (10.0 / -mvPosition.z);
+  float pointerSize = 1.0 + uPointerSizeStrength * pointerInfluence;
+  gl_PointSize = aSize
+    * energySize
+    * pointerSize
+    * uPixelRatio
+    * (10.0 / -mvPosition.z);
 
   // Gentle asynchronous brightness breathing.
   vTwinkle = 0.75 + 0.25 * sin(t * 1.4 + aSeed * 40.0);

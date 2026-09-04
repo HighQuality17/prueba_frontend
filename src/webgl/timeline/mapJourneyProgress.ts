@@ -1,6 +1,7 @@
 import type {
   ChromaticAberrationTimeline,
   JourneyRange,
+  PointerMagnificationEffect,
   PortalFadeEffect,
   SingularityEffect,
   TunnelBloomEffect,
@@ -56,6 +57,15 @@ export function smootherstep01(value: number): number {
     normalized *
     (normalized * (normalized * 6 - 15) + 10)
   )
+}
+
+export function pointerMagnificationStrength(
+  journeyProgress: number,
+  effect: PointerMagnificationEffect,
+): number {
+  if (journeyProgress <= effect.start) return 1
+  if (journeyProgress >= effect.end) return 0
+  return 1 - smootherstep01(segmentProgress(journeyProgress, effect))
 }
 
 function mix(from: number, to: number, progress: number): number {

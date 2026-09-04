@@ -5,6 +5,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   DynamicDrawUsage,
+  MathUtils,
   ShaderMaterial,
 } from 'three'
 import {
@@ -23,6 +24,7 @@ import {
 } from './timeline/experienceTimeline'
 import {
   activeSegmentIndex,
+  pointerMagnificationStrength,
   portalParticleOpacity,
   segmentProgress,
   sineCycle,
@@ -36,6 +38,7 @@ import {
   singularityTurbulence,
 } from './timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from './timeline/journeyProgress'
+import { useParticlePointer } from './useParticlePointer'
 
 /*
   Colors come strictly from the design token palette
@@ -114,6 +117,7 @@ function uploadMorphSegment(
 
 export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
   const materialRef = useRef<ShaderMaterial>(null)
+  const pointer = useParticlePointer()
 
   const dpr = useThree((state) => state.viewport.dpr)
   const canvasWidth = useThree((state) => state.size.width)
@@ -188,6 +192,19 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
       uTime: { value: 0 },
       uPixelRatio: { value: 1 },
       uMorphProgress: { value: 0 },
+      uPointer: { value: pointer.current.smoothed },
+      uPointerActive: { value: 0 },
+      uPointerRadius: { value: particleEffects.pointerMagnification.radius },
+      uPointerDepthStrength: {
+        value: particleEffects.pointerMagnification.depthStrength,
+      },
+      uPointerSizeStrength: {
+        value: particleEffects.pointerMagnification.sizeStrength,
+      },
+      uPointerPositionScale: {
+        value: particleEffects.pointerMagnification.positionScale,
+      },
+      uViewportAspect: { value: 1 },
       uRadialScale: { value: 1 },
       uDistortionStrength: { value: 0 },
       uDistortionPhase: { value: 0 },
@@ -203,13 +220,38 @@ export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
       uSourceRotationAmount: { value: sourceShape.rotationAmount },
       uTargetRotationAmount: { value: targetShape.rotationAmount },
     }
-  }, [shapes])
+  }, [pointer, shapes])
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, size }, delta) => {
     const material = materialRef.current
     if (!material) return
 
     const journey = journeyProgress.current
+    const pointerEffect = particleEffects.pointerMagnification
+    const pointerState = pointer.current
+    pointerState.smoothed.x = MathUtils.damp(
+      pointerState.smoothed.x,
+      pointerState.target.x,
+      pointerEffect.damping,
+      delta,
+    )
+    pointerState.smoothed.y = MathUtils.damp(
+      pointerState.smoothed.y,
+      pointerState.target.y,
+      pointerEffect.damping,
+      delta,
+    )
+    pointerState.active = MathUtils.damp(
+      pointerState.active,
+      pointerState.activeTarget,
+      pointerEffect.activationDamping,
+      delta,
+    )
+    material.uniforms.uPointerActive.value =
+      pointerState.active * pointerMagnificationStrength(journey, pointerEffect)
+    material.uniforms.uViewportAspect.value =
+      size.width / Math.max(size.height, 1)
+
     material.visible =
       journey < worldEffects.sacredGeometry.stages.eyeIntegration.end
     if (!material.visible) return
