@@ -1,10 +1,13 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   BufferAttribute,
   BufferGeometry,
+  Mesh,
+  Scene,
   ShaderMaterial,
   Vector2,
+  WebGLRenderTarget,
 } from 'three'
 import {
   tunnelFragmentShader,
@@ -18,9 +21,15 @@ import {
   smoothstep01,
 } from '../timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from '../timeline/journeyProgress'
+import type { RenderQualityProfile } from '../renderQuality'
+import { schedulePrewarmTasks } from '../schedulePrewarmTasks'
+import {
+  beginPreparation,
+  completePreparation,
+  failPreparation,
+  type TunnelPreparationState,
+} from '../tunnelPerformance'
 
-const RAYMARCH_STEPS_DESKTOP = 64
-const RAYMARCH_STEPS_MOBILE = 40
 const ORGANIC_IDLE_ANGULAR_SPEED =
   (Math.PI * 2) / worldEffects.organicMetamorphosis.idleCycleSeconds
 
@@ -38,18 +47,39 @@ function mix(from: number, to: number, progress: number): number {
 
 interface ProceduralTunnelProps {
   journeyProgress: JourneyProgressRef
+  quality: RenderQualityProfile
+  preparation: TunnelPreparationState
+  debugPerf: boolean
 }
 
-export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
+function setFamilyEvolution(target: Vector2, phase: number): void {
+  if (phase < 0.3) {
+    target.set(0, 0)
+  } else if (phase < 0.4) {
+    target.set(0, smoothstep01((phase - 0.3) / 0.1))
+  } else if (phase < 0.66) {
+    target.set(1, 0)
+  } else if (phase < 0.76) {
+    target.set(1, smoothstep01((phase - 0.66) / 0.1))
+  } else {
+    target.set(2, 0)
+  }
+}
+
+export function ProceduralTunnel({
+  journeyProgress,
+  quality,
+  preparation,
+  debugPerf,
+}: ProceduralTunnelProps) {
   const materialRef = useRef<ShaderMaterial>(null)
 
-  const canvasWidth = useThree((state) => state.size.width)
-  const canvasHeight = useThree((state) => state.size.height)
-  const dpr = useThree((state) => state.viewport.dpr)
-  // Same initial-width convention as ParticleSystem; locked for the session.
-  const isMobileRef = useRef(canvasWidth <= 768)
+  const gl = useThree((state) => state.gl)
+  const camera = useThree((state) => state.camera)
+  const scene = useThree((state) => state.scene)
 
   const resolutionUniform = useMemo(() => ({ value: new Vector2(1, 1) }), [])
+  const drawingBufferSize = useMemo(() => new Vector2(), [])
 
   const uniforms = useMemo<Record<string, { value: number | Vector2 }>>(
     () => ({
@@ -58,7 +88,7 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
       uReveal: { value: 0 },
       uOpacity: { value: 0 },
       uTravel: { value: 0 },
-      uSymmetry: { value: worldEffects.tunnel.symmetryFrom },
+      uFamilyEvolution: { value: new Vector2() },
       uTwist: { value: worldEffects.tunnel.twistFrom },
       uColorPhase: { value: 0 },
       uSpectralProgress: { value: 0 },
@@ -73,14 +103,10 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
       uOrganicAsymmetry: {
         value: worldEffects.organicMetamorphosis.maxAsymmetry,
       },
-      uStepLimit: {
-        value: isMobileRef.current
-          ? RAYMARCH_STEPS_MOBILE
-          : RAYMARCH_STEPS_DESKTOP,
-      },
-      uDetail: { value: isMobileRef.current ? 0 : 1 },
+      uStepLimit: { value: quality.tunnelSteps },
+      uDetail: { value: quality.tunnelDetail },
     }),
-    [resolutionUniform],
+    [quality, resolutionUniform],
   )
 
   const geometry = useMemo(() => {
@@ -91,6 +117,59 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
     )
     return geo
   }, [])
+
+  useEffect(() => {
+    let active = true
+    const scheduled = schedulePrewarmTasks([
+      async () => {
+        beginPreparation(preparation, 'tunnel', gl, debugPerf)
+        const material = materialRef.current
+        if (!material) throw new Error('Tunnel material is not mounted')
+
+        // Three's compile() traverses all scene materials, including invisible
+        // ones. This also prepares the sacred-geometry shader used at handoff.
+        await gl.compileAsync(scene, camera, scene)
+        if (!active) return
+
+        const previousRenderTarget = gl.getRenderTarget()
+        const warmScene = new Scene()
+        const prewarmMesh = new Mesh(geometry, material)
+        const warmTarget = new WebGLRenderTarget(1, 1, { depthBuffer: false })
+        const previousMaterialVisibility = material.visible
+        const resolution = material.uniforms.uResolution.value as Vector2
+        const previousResolutionX = resolution.x
+        const previousResolutionY = resolution.y
+        prewarmMesh.frustumCulled = false
+        warmScene.add(prewarmMesh)
+
+        try {
+          material.visible = true
+          resolution.set(1, 1)
+          gl.initRenderTarget(warmTarget)
+          gl.setRenderTarget(warmTarget)
+          gl.render(warmScene, camera)
+        } finally {
+          gl.setRenderTarget(previousRenderTarget)
+          material.visible = previousMaterialVisibility
+          resolution.set(previousResolutionX, previousResolutionY)
+          warmScene.remove(prewarmMesh)
+          warmTarget.dispose()
+        }
+      },
+    ])
+    scheduled.promise
+      .then(() => {
+        if (active) completePreparation(preparation, 'tunnel', gl, debugPerf)
+      })
+      .catch((error: unknown) => {
+        if (active) failPreparation(preparation, 'tunnel', error, debugPerf)
+      })
+
+    return () => {
+      active = false
+      scheduled.cancel()
+    }
+  }, [camera, debugPerf, geometry, gl, preparation, scene])
 
   useFrame(({ clock }) => {
     const material = materialRef.current
@@ -120,15 +199,20 @@ export function ProceduralTunnel({ journeyProgress }: ProceduralTunnelProps) {
 
     const reveal = smootherstep01(revealRaw)
 
-    ;(u.uResolution.value as Vector2).set(canvasWidth * dpr, canvasHeight * dpr)
+    gl.getDrawingBufferSize(drawingBufferSize)
+    ;(u.uResolution.value as Vector2).copy(drawingBufferSize)
     u.uTime.value = clock.elapsedTime
     u.uReveal.value = reveal
     u.uOpacity.value = smoothstep01(revealRaw) * (1 - tunnelFade)
     u.uTravel.value = effect.maxTravelDistance * smootherstep01(local)
-    u.uSymmetry.value = mix(
+    const symmetry = mix(
       effect.symmetryFrom,
       effect.symmetryTo,
       smoothstep01(local),
+    )
+    setFamilyEvolution(
+      u.uFamilyEvolution.value as Vector2,
+      clamp01((symmetry - 6) / 6),
     )
     u.uTwist.value = mix(effect.twistFrom, effect.twistTo, local)
     u.uColorPhase.value = local * 0.65

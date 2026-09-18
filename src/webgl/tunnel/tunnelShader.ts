@@ -7,8 +7,8 @@
   - MID_THICKNESS 0.048    related middle contour
   - INNER_THICKNESS 0.036  doubled-frequency inner contour
   - FINE_THICKNESS 0.028   desktop-only tripled-frequency contour
-  - MAX_STEPS 64           hard loop bound; uStepLimit lowers it (mobile 40)
-  - REFINEMENT_STEPS 3     local corrections after a hit (mobile uses 2)
+  - MAX_STEPS 64           hard loop bound; uStepLimit lowers it (mobile 28)
+  - REFINEMENT_STEPS 3     local corrections after a hit (mobile uses 1)
   - STEP_SCALE 0.75        conservative factor for SDF-like radial contours
                            whose angular radius is not exact Euclidean distance
   - HIT_EPSILON 0.002      surface hit threshold in world units
@@ -21,8 +21,8 @@
   membrane contour. The final eye membrane replaces the shared living-core
   contour instead of permanently stacking another primitive. Sacred geometry
   owns the post-eye handoff. Two short family transitions evaluate both adjacent
-  curated families. Confirmed hits add 2
-  mobile / 3 desktop refinements and 4 evaluations for the normal.
+  curated families. Confirmed hits add 1 mobile / 3 desktop refinements and 3
+  mobile / 4 desktop evaluations for the normal.
 */
 
 export const tunnelVertexShader = /* glsl */ `
@@ -37,7 +37,7 @@ uniform float uTime;
 uniform float uReveal;
 uniform float uOpacity;
 uniform float uTravel;
-uniform float uSymmetry;
+uniform vec2 uFamilyEvolution;
 uniform float uTwist;
 uniform float uColorPhase;
 uniform float uSpectralProgress;
@@ -211,20 +211,22 @@ float curatedFamilyRadius(
   );
 }
 
-/*
-  Stable family stages with two short complete-radius crossfades. x is the
-  sequence offset; y is the blend to the next curated family.
-*/
-vec2 familyEvolution(float phase) {
-  if (phase < 0.3) return vec2(0.0, 0.0);
-  if (phase < 0.4) {
-    return vec2(0.0, smoothstep(0.3, 0.4, phase));
-  }
-  if (phase < 0.66) return vec2(1.0, 0.0);
-  if (phase < 0.76) {
-    return vec2(1.0, smoothstep(0.66, 0.76, phase));
-  }
-  return vec2(2.0, 0.0);
+float mobileFamilyRadius(
+  float family,
+  float theta,
+  float baseRadius,
+  float layer,
+  float phase
+) {
+  float symmetry = 6.0;
+  if (family > 0.5 && family < 1.5) symmetry = 8.0;
+  if (family > 1.5 && family < 2.5) symmetry = 12.0;
+  if (family > 2.5 && family < 3.5) symmetry = 8.0;
+  if (layer > 1.5) symmetry *= 2.0;
+
+  float layerProgress = clamp(layer / 3.0, 0.0, 1.0);
+  float amplitude = baseRadius * mix(0.085, 0.06, layerProgress);
+  return roseRadius(theta, baseRadius, amplitude, symmetry, phase + layer * 0.47);
 }
 
 float evolvedFamilyRadius(
@@ -236,23 +238,21 @@ float evolvedFamilyRadius(
   float phase
 ) {
   float familyA = mod(cellId + evolution.x, 5.0);
-  float radiusA = curatedFamilyRadius(
-    familyA,
-    theta,
-    baseRadius,
-    layer,
-    phase
-  );
+  float radiusA;
+  if (uDetail < 0.5) {
+    radiusA = mobileFamilyRadius(familyA, theta, baseRadius, layer, phase);
+  } else {
+    radiusA = curatedFamilyRadius(familyA, theta, baseRadius, layer, phase);
+  }
   if (evolution.y <= 0.0001) return radiusA;
 
   float familyB = mod(familyA + 1.0, 5.0);
-  float radiusB = curatedFamilyRadius(
-    familyB,
-    theta,
-    baseRadius,
-    layer,
-    phase
-  );
+  float radiusB;
+  if (uDetail < 0.5) {
+    radiusB = mobileFamilyRadius(familyB, theta, baseRadius, layer, phase);
+  } else {
+    radiusB = curatedFamilyRadius(familyB, theta, baseRadius, layer, phase);
+  }
   return mix(radiusA, radiusB, evolution.y);
 }
 
@@ -277,8 +277,7 @@ vec2 tunnelSDF(vec3 p) {
   float lz = tz - cellId * CELL_LENGTH - 0.5 * CELL_LENGTH;
   float parity = mod(cellId, 2.0);
   float direction = mix(-1.0, 1.0, parity);
-  float journeyPhase = clamp((uSymmetry - 6.0) / 6.0, 0.0, 1.0);
-  vec2 evolution = familyEvolution(journeyPhase);
+  vec2 evolution = uFamilyEvolution;
 
   float rho = length(p.xy);
   float theta = atan(p.y, p.x);
@@ -504,13 +503,21 @@ vec2 tunnelSDF(vec3 p) {
   return scene;
 }
 
-vec3 calcNormal(vec3 p, float rayDistance) {
+vec3 calcNormal(vec3 p, float rayDistance, float centerDistance) {
   float depth = clamp(rayDistance / MAX_RAY_DISTANCE, 0.0, 1.0);
   float normalEpsilon = mix(
     NORMAL_EPSILON_NEAR,
     NORMAL_EPSILON_FAR,
     smoothstep(0.0, 1.0, depth)
   );
+  if (uDetail < 0.5) {
+    return normalize(vec3(
+      tunnelSDF(p + vec3(normalEpsilon, 0.0, 0.0)).x - centerDistance,
+      tunnelSDF(p + vec3(0.0, normalEpsilon, 0.0)).x - centerDistance,
+      tunnelSDF(p + vec3(0.0, 0.0, normalEpsilon)).x - centerDistance
+    ));
+  }
+
   vec2 e = vec2(normalEpsilon, -normalEpsilon);
   return normalize(
     e.xyy * tunnelSDF(p + e.xyy).x
@@ -557,7 +564,7 @@ void main() {
     // Local signed-distance correction converges the coarse hit without
     // increasing the full-screen primary march count.
     for (int i = 0; i < REFINEMENT_STEPS; i++) {
-      if (i == 2 && uDetail < 0.5) break;
+      if (i > 0 && uDetail < 0.5) break;
       float correction = clamp(
         sceneSample.x,
         -HIT_EPSILON * 6.0,
@@ -594,7 +601,7 @@ void main() {
 
   if (hit) {
     vec3 pos = ro + rd * t;
-    vec3 n = calcNormal(pos, t);
+    vec3 n = calcNormal(pos, t, sceneSample.x);
     float layer = sceneSample.y;
     float middleLayer = step(0.5, layer);
     float innerLayer = step(1.5, layer);
@@ -628,7 +635,7 @@ void main() {
       + layer * 0.09
       + uColorPhase;
     float depthTone = 0.5 + 0.5 * cos(
-      (pos.z + uTravel) * 0.24 + radius * 0.7 + layer * 1.13
+      surfaceTz * 0.24 + radius * 0.7 + layer * 1.13
     );
 
     vec3 cyan = vec3(0.02, 0.92, 0.68);

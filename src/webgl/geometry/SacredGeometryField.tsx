@@ -32,10 +32,10 @@ export function SacredGeometryField({
   journeyProgress,
 }: SacredGeometryFieldProps) {
   const materialRef = useRef<ShaderMaterial>(null)
+  const gl = useThree((state) => state.gl)
   const canvasWidth = useThree((state) => state.size.width)
-  const canvasHeight = useThree((state) => state.size.height)
-  const dpr = useThree((state) => state.viewport.dpr)
   const isMobileRef = useRef(canvasWidth <= MOBILE_BREAKPOINT)
+  const drawingBufferSize = useMemo(() => new Vector2(), [])
 
   const geometry = useMemo(() => {
     const result = new BufferGeometry()
@@ -84,7 +84,8 @@ export function SacredGeometryField({
     )
 
     const u = material.uniforms
-    ;(u.uResolution.value as Vector2).set(canvasWidth * dpr, canvasHeight * dpr)
+    gl.getDrawingBufferSize(drawingBufferSize)
+    ;(u.uResolution.value as Vector2).copy(drawingBufferSize)
     u.uBirth.value = birth
     u.uIntegration.value = integration
     u.uExpansion.value = expansion
