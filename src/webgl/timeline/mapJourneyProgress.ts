@@ -1,4 +1,5 @@
 import type {
+  CameraPointerEffect,
   ChromaticAberrationTimeline,
   JourneyRange,
   PointerMagnificationEffect,
@@ -66,6 +67,53 @@ export function pointerMagnificationStrength(
   if (journeyProgress <= effect.start) return 1
   if (journeyProgress >= effect.end) return 0
   return 1 - smootherstep01(segmentProgress(journeyProgress, effect))
+}
+
+export function pointerCameraStrength(
+  journeyProgress: number,
+  effect: CameraPointerEffect,
+): number {
+  const { strengths, stages } = effect
+  const transition = (
+    range: JourneyRange,
+    from: number,
+    to: number,
+  ) =>
+    from +
+    (to - from) * smootherstep01(segmentProgress(journeyProgress, range))
+
+  if (journeyProgress < stages.fractalSingularity.start) {
+    return strengths.early
+  }
+  if (journeyProgress < stages.fractalSingularity.end) {
+    return transition(
+      stages.fractalSingularity,
+      strengths.early,
+      strengths.fractalSingularity,
+    )
+  }
+  if (journeyProgress < stages.tunnel.end) {
+    return transition(
+      stages.tunnel,
+      strengths.fractalSingularity,
+      strengths.tunnel,
+    )
+  }
+  if (journeyProgress < stages.alienEye.end) {
+    return transition(
+      stages.alienEye,
+      strengths.tunnel,
+      strengths.alienEye,
+    )
+  }
+  if (journeyProgress < stages.sacredGeometry.end) {
+    return transition(
+      stages.sacredGeometry,
+      strengths.alienEye,
+      strengths.sacredGeometry,
+    )
+  }
+  return strengths.sacredGeometry
 }
 
 function mix(from: number, to: number, progress: number): number {

@@ -214,6 +214,28 @@ export interface CameraDiveEffect extends JourneyRange {
   }
 }
 
+export interface CameraPointerEffect {
+  readonly positionX: number
+  readonly positionY: number
+  readonly yaw: number
+  readonly pitch: number
+  readonly damping: number
+  readonly activationDamping: number
+  readonly strengths: {
+    readonly early: number
+    readonly fractalSingularity: number
+    readonly tunnel: number
+    readonly alienEye: number
+    readonly sacredGeometry: number
+  }
+  readonly stages: {
+    readonly fractalSingularity: JourneyRange
+    readonly tunnel: JourneyRange
+    readonly alienEye: JourneyRange
+    readonly sacredGeometry: JourneyRange
+  }
+}
+
 export const PHASE_22_JOURNEY_END = 0.84
 export const PHASE_21_JOURNEY_END = 0.84 * PHASE_22_JOURNEY_END
 export const PHASE_20_JOURNEY_END = 0.84 * PHASE_21_JOURNEY_END
@@ -281,7 +303,47 @@ export const journeyPhases = {
   torusHold: legacyRange(0.99, 1),
 } as const satisfies Record<string, JourneyRange>
 
+export const CAMERA_POINTER_POSITION_X = 0.11
+export const CAMERA_POINTER_POSITION_Y = 0.065
+export const CAMERA_POINTER_YAW = 0.018
+export const CAMERA_POINTER_PITCH = 0.012
+export const CAMERA_POINTER_DAMPING = 8
+export const CAMERA_POINTER_ACTIVATION_DAMPING = 9
+
 export const cameraEffects = {
+  pointerParallax: {
+    positionX: CAMERA_POINTER_POSITION_X,
+    positionY: CAMERA_POINTER_POSITION_Y,
+    yaw: CAMERA_POINTER_YAW,
+    pitch: CAMERA_POINTER_PITCH,
+    damping: CAMERA_POINTER_DAMPING,
+    activationDamping: CAMERA_POINTER_ACTIVATION_DAMPING,
+    strengths: {
+      early: 1,
+      fractalSingularity: 0.76,
+      tunnel: 0.5,
+      alienEye: 0.3,
+      sacredGeometry: 0.18,
+    },
+    stages: {
+      fractalSingularity: {
+        start: journeyPhases.sphereDistortionHold.start,
+        end: journeyPhases.sphereDistortionHold.end,
+      },
+      tunnel: {
+        start: journeyPhases.portalDive.start,
+        end: legacyRange(0.88, 1).start,
+      },
+      alienEye: {
+        start: legacyRange(0.88, 1).start,
+        end: legacyRange(0.96, 1).start,
+      },
+      sacredGeometry: {
+        start: legacyRange(0.96, 1).start,
+        end: LEGACY_JOURNEY_END,
+      },
+    },
+  },
   portalDive: {
     ...journeyPhases.portalDive,
     stages: {
@@ -292,7 +354,7 @@ export const cameraEffects = {
       settle: { start: 0.9, end: 1 },
     },
   },
-} as const satisfies Record<string, CameraDiveEffect>
+} as const satisfies Record<string, CameraDiveEffect | CameraPointerEffect>
 
 export const POINTER_LENS_RADIUS = 0.22
 export const POINTER_LENS_DEPTH = 0.64

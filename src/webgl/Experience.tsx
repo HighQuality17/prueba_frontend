@@ -6,6 +6,7 @@ import { CAMERA_BASELINE, CameraRig } from './camera/CameraRig'
 import { SacredGeometryField } from './geometry/SacredGeometryField'
 import { JourneyPostProcessing } from './postprocessing/JourneyPostProcessing'
 import { ProceduralTunnel } from './tunnel/ProceduralTunnel'
+import { useParticlePointer } from './useParticlePointer'
 import type { JourneyProgressRef } from './timeline/journeyProgress'
 import {
   advanceJourneyScroll,
@@ -104,6 +105,7 @@ function JourneyProgressSmoother({
 export function Experience() {
   const rawJourneyProgress = useJourneyScroll()
   const visualJourneyProgress = useRef(0)
+  const pointer = useParticlePointer()
 
   return (
     <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
@@ -131,9 +133,15 @@ export function Experience() {
           rawProgress={rawJourneyProgress}
           visualProgress={visualJourneyProgress}
         />
-        <CameraRig journeyProgress={visualJourneyProgress} />
+        <CameraRig
+          journeyProgress={visualJourneyProgress}
+          pointer={pointer}
+        />
         <ProceduralTunnel journeyProgress={visualJourneyProgress} />
-        <ParticleSystem journeyProgress={visualJourneyProgress} />
+        <ParticleSystem
+          journeyProgress={visualJourneyProgress}
+          pointer={pointer}
+        />
         <SacredGeometryField journeyProgress={visualJourneyProgress} />
         <JourneyPostProcessing journeyProgress={visualJourneyProgress} />
       </Canvas>

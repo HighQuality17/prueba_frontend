@@ -1,15 +1,17 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { PerspectiveCamera } from 'three'
+import { MathUtils, PerspectiveCamera, Vector2 } from 'three'
 import {
   cameraEffects,
   type CameraDiveEffect,
 } from '../timeline/experienceTimeline'
 import {
+  pointerCameraStrength,
   segmentProgress,
   smootherstep01,
 } from '../timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from '../timeline/journeyProgress'
+import type { ParticlePointerRef } from '../useParticlePointer'
 
 const DEG_TO_RAD = Math.PI / 180
 const FOV_UPDATE_EPSILON = 0.0001
@@ -75,6 +77,7 @@ const FOV_TRACK: CameraTrack = {
 
 interface CameraRigProps {
   journeyProgress: JourneyProgressRef
+  pointer: ParticlePointerRef
 }
 
 function mix(from: number, to: number, progress: number): number {
@@ -136,9 +139,11 @@ function restoreBaseline(camera: PerspectiveCamera): void {
   }
 }
 
-export function CameraRig({ journeyProgress }: CameraRigProps) {
+export function CameraRig({ journeyProgress, pointer }: CameraRigProps) {
   const camera = useThree((state) => state.camera)
   const projectedFovRef = useRef<number>(CAMERA_BASELINE.fov)
+  const pointerPositionRef = useRef(new Vector2())
+  const pointerActiveRef = useRef(0)
 
   useEffect(() => {
     return () => {
@@ -146,21 +151,52 @@ export function CameraRig({ journeyProgress }: CameraRigProps) {
     }
   }, [camera])
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!(camera instanceof PerspectiveCamera)) return
 
     const effect = cameraEffects.portalDive
-    const localProgress = segmentProgress(journeyProgress.current, effect)
+    const journey = journeyProgress.current
+    const localProgress = segmentProgress(journey, effect)
     const x = sampleTrack(localProgress, X_TRACK, effect)
     const y = sampleTrack(localProgress, Y_TRACK, effect)
     const z = sampleTrack(localProgress, Z_TRACK, effect)
     const roll = sampleTrack(localProgress, ROLL_TRACK, effect)
     const fov = sampleTrack(localProgress, FOV_TRACK, effect)
 
-    camera.position.set(x, y, z)
+    const pointerEffect = cameraEffects.pointerParallax
+    const pointerTarget = pointer.current.target
+    const pointerPosition = pointerPositionRef.current
+    pointerPosition.x = MathUtils.damp(
+      pointerPosition.x,
+      MathUtils.clamp(pointerTarget.x, -1, 1),
+      pointerEffect.damping,
+      delta,
+    )
+    pointerPosition.y = MathUtils.damp(
+      pointerPosition.y,
+      MathUtils.clamp(pointerTarget.y, -1, 1),
+      pointerEffect.damping,
+      delta,
+    )
+    pointerActiveRef.current = MathUtils.damp(
+      pointerActiveRef.current,
+      pointer.current.activeTarget,
+      pointerEffect.activationDamping,
+      delta,
+    )
+    const pointerStrength =
+      pointerActiveRef.current * pointerCameraStrength(journey, pointerEffect)
+    const pointerX = pointerPosition.x * pointerStrength
+    const pointerY = pointerPosition.y * pointerStrength
+
+    camera.position.set(
+      x + pointerX * pointerEffect.positionX,
+      y + pointerY * pointerEffect.positionY,
+      z,
+    )
     camera.rotation.set(
-      CAMERA_BASELINE.rotation.x,
-      CAMERA_BASELINE.rotation.y,
+      CAMERA_BASELINE.rotation.x - pointerY * pointerEffect.pitch,
+      CAMERA_BASELINE.rotation.y + pointerX * pointerEffect.yaw,
       roll,
     )
     camera.fov = fov

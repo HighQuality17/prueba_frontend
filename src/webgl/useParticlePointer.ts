@@ -11,6 +11,10 @@ export interface ParticlePointerState {
   hasSample: boolean
 }
 
+export interface ParticlePointerRef {
+  readonly current: ParticlePointerState
+}
+
 export function useParticlePointer() {
   const pointer = useRef<ParticlePointerState>({
     target: new Vector2(),

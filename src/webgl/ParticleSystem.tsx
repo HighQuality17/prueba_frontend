@@ -38,7 +38,7 @@ import {
   singularityTurbulence,
 } from './timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from './timeline/journeyProgress'
-import { useParticlePointer } from './useParticlePointer'
+import type { ParticlePointerRef } from './useParticlePointer'
 
 /*
   Colors come strictly from the design token palette
@@ -97,6 +97,7 @@ function hexToRgb(hex: string): [number, number, number] {
 
 interface ParticleSystemProps {
   journeyProgress: JourneyProgressRef
+  pointer: ParticlePointerRef
 }
 
 function uploadMorphSegment(
@@ -115,9 +116,11 @@ function uploadMorphSegment(
   target.needsUpdate = true
 }
 
-export function ParticleSystem({ journeyProgress }: ParticleSystemProps) {
+export function ParticleSystem({
+  journeyProgress,
+  pointer,
+}: ParticleSystemProps) {
   const materialRef = useRef<ShaderMaterial>(null)
-  const pointer = useParticlePointer()
 
   const dpr = useThree((state) => state.viewport.dpr)
   const canvasWidth = useThree((state) => state.size.width)
