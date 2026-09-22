@@ -1,9 +1,13 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   BufferAttribute,
   BufferGeometry,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   ShaderMaterial,
+  Texture,
+  TextureLoader,
   Vector2,
 } from 'three'
 import type { JourneyProgressRef } from '../timeline/journeyProgress'
@@ -37,6 +41,27 @@ export function SacredGeometryField({
   const isMobileRef = useRef(canvasWidth <= MOBILE_BREAKPOINT)
   const drawingBufferSize = useMemo(() => new Vector2(), [])
 
+  const textures = useMemo(() => {
+    const loader = new TextureLoader()
+    const configure = (tex: Texture) => {
+      tex.minFilter = LinearMipmapLinearFilter
+      tex.magFilter = LinearFilter
+      tex.generateMipmaps = true
+    }
+    const tiger = loader.load('/assets/animals/tiger.png', configure)
+    const serpent = loader.load('/assets/animals/serpent.png', configure)
+    const eagle = loader.load('/assets/animals/eagle.png', configure)
+    return { tiger, serpent, eagle }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      textures.tiger.dispose()
+      textures.serpent.dispose()
+      textures.eagle.dispose()
+    }
+  }, [textures])
+
   const geometry = useMemo(() => {
     const result = new BufferGeometry()
     result.setAttribute('position', new BufferAttribute(FULLSCREEN_TRIANGLE, 3))
@@ -46,6 +71,7 @@ export function SacredGeometryField({
   const uniforms = useMemo(
     () => ({
       uResolution: { value: new Vector2(1, 1) },
+      uTime: { value: 0 },
       uBirth: { value: 0 },
       uIntegration: { value: 0 },
       uExpansion: { value: 0 },
@@ -55,11 +81,14 @@ export function SacredGeometryField({
       uEagle: { value: 0 },
       uFinal: { value: 0 },
       uDetail: { value: isMobileRef.current ? 0 : 1 },
+      uTigerTex: { value: textures.tiger },
+      uSerpentTex: { value: textures.serpent },
+      uEagleTex: { value: textures.eagle },
     }),
-    [],
+    [textures],
   )
 
-  useFrame(() => {
+  useFrame((state) => {
     const material = materialRef.current
     if (!material) return
 
@@ -86,6 +115,7 @@ export function SacredGeometryField({
     const u = material.uniforms
     gl.getDrawingBufferSize(drawingBufferSize)
     ;(u.uResolution.value as Vector2).copy(drawingBufferSize)
+    u.uTime.value = state.clock.elapsedTime
     u.uBirth.value = birth
     u.uIntegration.value = integration
     u.uExpansion.value = expansion

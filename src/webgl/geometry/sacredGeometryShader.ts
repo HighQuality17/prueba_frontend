@@ -8,6 +8,7 @@ export const sacredGeometryFragmentShader = /* glsl */ `
 precision highp float;
 
 uniform vec2 uResolution;
+uniform float uTime;
 uniform float uBirth;
 uniform float uIntegration;
 uniform float uExpansion;
@@ -17,6 +18,9 @@ uniform float uSerpent;
 uniform float uEagle;
 uniform float uFinal;
 uniform float uDetail;
+uniform sampler2D uTigerTex;
+uniform sampler2D uSerpentTex;
+uniform sampler2D uEagleTex;
 
 #define PI 3.14159265359
 #define TAU 6.28318530718
@@ -94,81 +98,85 @@ float satelliteMandala(vec2 p, vec2 center, float scale, float aa) {
 }
 
 float tigerArchetype(vec2 p, float aa) {
-  vec2 q = vec2(abs(p.x), p.y);
-  float line = 0.0;
-
-  line = max(line, lineMask(sdSegment(q, vec2(0.02, 0.55), vec2(0.25, 0.72)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.25, 0.72), vec2(0.47, 0.53)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.47, 0.53), vec2(0.43, 0.03)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.43, 0.03), vec2(0.25, -0.42)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.25, -0.42), vec2(0.0, -0.53)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.09, 0.22), vec2(0.36, 0.3)), 0.006, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.09, 0.22), vec2(0.31, 0.12)), 0.004, aa));
-  line = max(line, lineMask(sdCircle(q, vec2(0.235, 0.205), 0.052), 0.004, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.0, -0.06), vec2(0.19, -0.14)), 0.004, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.19, -0.14), vec2(0.0, -0.27)), 0.004, aa));
-
-  for (int i = 0; i < 5; i++) {
-    float fi = float(i);
-    vec2 a = vec2(0.08 + fi * 0.035, 0.48 - fi * 0.15);
-    vec2 b = vec2(0.38 + fi * 0.012, 0.4 - fi * 0.145);
-    line = max(line, lineMask(sdSegment(q, a, b), 0.0045, aa));
-  }
-
-  float browSun = lineMask(sdCircle(p, vec2(0.0, 0.35), 0.12), 0.004, aa);
-  browSun = max(browSun, lineMask(sdDiamond(p, vec2(0.0, 0.35), vec2(0.085, 0.14)), 0.004, aa));
-  return max(line, browSun);
+  float aspect = uResolution.x / uResolution.y;
+  vec2 offset = aspect > 1.1 ? vec2(0.12, 0.02) : vec2(0.0, 0.06);
+  float baseScale = aspect > 1.1 ? 0.90 : 0.82;
+  
+  float breathe = 1.0 + 0.015 * sin(uTime * 2.2);
+  vec2 q = (p - offset) / (baseScale * breathe);
+  
+  vec2 uv = vec2(q.x + 0.5, q.y + 0.5);
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  
+  float edgeFade = smoothstep(0.0, 0.04, uv.x) * smoothstep(1.0, 0.96, uv.x)
+                 * smoothstep(0.0, 0.04, uv.y) * smoothstep(1.0, 0.96, uv.y);
+                 
+  float mask = texture2D(uTigerTex, uv).a * edgeFade;
+  
+  float core = smoothstep(0.18, 0.75, mask);
+  float aura = smoothstep(0.05, 0.5, mask) * 0.45;
+  float shimmer = 1.0 + 0.06 * sin(uTime * 4.0 + q.y * 6.0);
+  
+  float eyeDist = length(q - vec2(0.0, 0.12));
+  float sacredHalo = lineMask(abs(eyeDist - 0.28), 0.003, aa) * 0.35;
+  sacredHalo += lineMask(abs(eyeDist - 0.38), 0.002, aa) * 0.22;
+  
+  return (core * 1.15 + aura) * shimmer + sacredHalo;
 }
 
 float serpentArchetype(vec2 p, float aa) {
-  float y = clamp(p.y, -0.7, 0.58);
-  float wave = 0.23 * sin((y + 0.62) * 5.4);
-  float slope = 1.242 * cos((y + 0.62) * 5.4);
-  float spineDistance = abs(p.x - wave) / sqrt(1.0 + slope * slope);
-  float yMask = smoothstep(-0.76, -0.68, p.y) * (1.0 - smoothstep(0.58, 0.68, p.y));
-  float body = lineMask(abs(spineDistance - 0.065), 0.004, aa) * yMask;
-  float axis = lineMask(spineDistance, 0.0025, aa) * yMask * 0.65;
-  float rhythm = abs(fract((p.y + 0.72) * 7.5) - 0.5);
-  float segments = lineMask(rhythm * 0.12 + spineDistance * 0.28, 0.012, aa) * yMask;
-
-  vec2 head = vec2(p.x - 0.23 * sin(1.2 * 5.4), p.y - 0.62);
-  float crown = lineMask(sdDiamond(head, vec2(0.0), vec2(0.18, 0.14)), 0.005, aa);
-  crown = max(crown, lineMask(sdCircle(head, vec2(-0.055, 0.01), 0.018), 0.003, aa));
-  crown = max(crown, lineMask(sdCircle(head, vec2(0.055, 0.01), 0.018), 0.003, aa));
-
-  float nodes = 0.0;
-  for (int i = 0; i < 7; i++) {
-    if (i >= 5 && uDetail < 0.5) continue;
-    float ny = -0.55 + float(i) * 0.17;
-    float nx = 0.23 * sin((ny + 0.62) * 5.4);
-    nodes = max(nodes, lineMask(sdCircle(p, vec2(nx, ny), 0.035), 0.003, aa));
-  }
-  return max(max(body, axis), max(segments, max(crown, nodes)));
+  float aspect = uResolution.x / uResolution.y;
+  vec2 offset = aspect > 1.1 ? vec2(-0.10, 0.0) : vec2(0.0, 0.04);
+  float baseScale = aspect > 1.1 ? 0.96 : 0.86;
+  
+  float undulation = sin(uTime * 2.0 + p.y * 4.0) * 0.008;
+  vec2 q = ((p - offset) + vec2(undulation, 0.0)) / baseScale;
+  
+  vec2 uv = vec2(q.x + 0.5, q.y + 0.5);
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  
+  float edgeFade = smoothstep(0.0, 0.03, uv.x) * smoothstep(1.0, 0.97, uv.x)
+                 * smoothstep(0.0, 0.03, uv.y) * smoothstep(1.0, 0.97, uv.y);
+                 
+  float mask = texture2D(uSerpentTex, uv).a * edgeFade;
+  
+  float core = smoothstep(0.15, 0.70, mask);
+  float scales = smoothstep(0.35, 0.90, mask);
+  float aura = smoothstep(0.04, 0.45, mask) * 0.4;
+  float shimmer = 1.0 + 0.08 * sin(uTime * 3.5 - q.y * 5.0);
+  
+  float spineRings = lineMask(abs(length(q - vec2(0.0, -0.05)) - 0.42), 0.0025, aa) * 0.28;
+  
+  return (core + scales * 0.35 + aura) * shimmer + spineRings;
 }
 
 float eagleArchetype(vec2 p, float aa) {
-  vec2 q = vec2(abs(p.x), p.y);
-  float line = 0.0;
-  line = max(line, lineMask(sdSegment(q, vec2(0.02, 0.22), vec2(0.3, 0.45)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.3, 0.45), vec2(0.67, 0.57)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.67, 0.57), vec2(1.02, 0.42)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(1.02, 0.42), vec2(0.76, 0.14)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.76, 0.14), vec2(0.38, 0.04)), 0.005, aa));
-  line = max(line, lineMask(sdSegment(q, vec2(0.38, 0.04), vec2(0.09, -0.2)), 0.005, aa));
-
-  for (int i = 0; i < 7; i++) {
-    if (i >= 5 && uDetail < 0.5) continue;
-    float fi = float(i);
-    vec2 root = vec2(0.1 + fi * 0.075, 0.22 + fi * 0.035);
-    vec2 tip = vec2(0.42 + fi * 0.095, -0.02 + fi * 0.065);
-    line = max(line, lineMask(sdSegment(q, root, tip), 0.004, aa));
-  }
-
-  line = max(line, lineMask(sdCircle(p, vec2(0.0, 0.17), 0.135), 0.004, aa));
-  line = max(line, lineMask(sdDiamond(p, vec2(0.0, -0.16), vec2(0.15, 0.31)), 0.004, aa));
-  line = max(line, lineMask(sdDiamond(p, vec2(0.0, 0.12), vec2(0.06, 0.075)), 0.004, aa));
-  line = max(line, lineMask(sdSegment(p, vec2(0.0, 0.08), vec2(0.13, 0.02)), 0.004, aa));
-  return line;
+  float aspect = uResolution.x / uResolution.y;
+  vec2 offset = aspect > 1.1 ? vec2(0.04, 0.02) : vec2(0.0, 0.05);
+  float baseScale = aspect > 1.1 ? 1.15 : 0.98;
+  
+  float breathe = 1.0 + 0.012 * sin(uTime * 1.8);
+  vec2 q = (p - offset) / (baseScale * breathe);
+  
+  vec2 uv = vec2(q.x + 0.5, q.y + 0.5);
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  
+  float edgeFade = smoothstep(0.0, 0.02, uv.x) * smoothstep(1.0, 0.98, uv.x)
+                 * smoothstep(0.0, 0.02, uv.y) * smoothstep(1.0, 0.98, uv.y);
+                 
+  float mask = texture2D(uEagleTex, uv).a * edgeFade;
+  
+  float core = smoothstep(0.18, 0.72, mask);
+  float details = smoothstep(0.40, 0.88, mask);
+  float aura = smoothstep(0.04, 0.50, mask) * 0.42;
+  float shimmer = 1.0 + 0.07 * cos(uTime * 2.8 + abs(q.x) * 4.0);
+  
+  float radDist = length(q);
+  float radAngle = atan(q.y, q.x);
+  float fanRays = lineMask(abs(sin(radAngle * 12.0)) * radDist, 0.002, aa) * smoothstep(0.2, 0.7, radDist) * 0.18;
+  float auraRing = lineMask(abs(radDist - 0.48), 0.0025, aa) * 0.26;
+  
+  return (core + details * 0.3 + aura) * shimmer + fanRays + auraRing;
 }
 
 void main() {
@@ -217,9 +225,11 @@ void main() {
   vec3 fieldColor = mix(cyan, violet, 0.5 + 0.5 * sin(angle * 6.0));
   fieldColor = mix(fieldColor, magenta, smoothstep(0.45, 1.2, length(p)) * 0.42);
   vec3 color = fieldColor * field * (0.62 + 0.52 * uBloom);
-  color += mix(gold, magenta, 0.26) * tiger * 1.3;
-  color += mix(turquoise, violet, smoothstep(-0.7, 0.65, p.y)) * serpent * 1.35;
-  color += mix(cyan, white, smoothstep(0.0, 0.9, abs(p.x))) * eagle * 1.3;
+  
+  vec3 tigerColor = mix(gold, magenta, smoothstep(0.05, 0.40, abs(p.x)));
+  color += tigerColor * tiger * 1.35;
+  color += mix(turquoise, violet, smoothstep(-0.45, 0.35, p.y)) * serpent * 1.4;
+  color += mix(cyan, white, smoothstep(0.08, 0.55, abs(p.x))) * eagle * 1.35;
 
   float origin = exp(-dot(p, p) * mix(640.0, 90.0, uBirth));
   color += mix(white, cyan, 0.42) * origin * uBirth * (1.0 - 0.55 * uBloom) * 1.8;
