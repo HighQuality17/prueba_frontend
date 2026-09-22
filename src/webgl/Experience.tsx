@@ -5,7 +5,9 @@ import { ParticleSystem } from './ParticleSystem'
 import { CAMERA_BASELINE, CameraRig } from './camera/CameraRig'
 import { SacredGeometryField } from './geometry/SacredGeometryField'
 import { JourneyPostProcessing } from './postprocessing/JourneyPostProcessing'
+import { AlienEye } from './tunnel/AlienEye'
 import { ProceduralTunnel } from './tunnel/ProceduralTunnel'
+import { TunnelRevealMask } from './tunnel/TunnelRevealMask'
 import { useParticlePointer } from './useParticlePointer'
 import { detectRenderQuality } from './renderQuality'
 import type { RenderQualityProfile } from './renderQuality'
@@ -30,7 +32,6 @@ const ENDPOINT_EPSILON = 0.00001
 const SETTLE_EPSILON = 0.000001
 const TARGET_RENDER_FPS = 60
 const TARGET_FRAME_INTERVAL_MS = 1000 / TARGET_RENDER_FPS
-const TUNNEL_DPR_PRELOAD_MARGIN = 0.025
 
 function RenderCadenceController() {
   const advance = useThree((state) => state.advance)
@@ -108,112 +109,6 @@ function JourneyProgressSmoother({
   return null
 }
 
-interface TunnelDprControllerProps {
-  rawProgress: JourneyProgressRef
-  journeyProgress: JourneyProgressRef
-  quality: RenderQualityProfile
-  debugPerf: boolean
-  preparation: TunnelPreparationState
-}
-
-function TunnelDprController({
-  rawProgress,
-  journeyProgress,
-  quality,
-  debugPerf,
-  preparation,
-}: TunnelDprControllerProps) {
-  const setDpr = useThree((state) => state.setDpr)
-  const get = useThree((state) => state.get)
-  const currentDpr = useThree((state) => state.viewport.dpr)
-  const normalDprRef = useRef(currentDpr)
-  const tunnelDprActiveRef = useRef(false)
-  const dprChangeCountRef = useRef(0)
-  const drawingBufferSize = useMemo(() => new Vector2(), [])
-
-  useFrame(() => {
-    if (!quality.isMobile) return
-
-    const journey = journeyProgress.current
-    const target = rawProgress.current
-    const tunnelStart = worldEffects.tunnel.start
-    const tunnelEnd = worldEffects.sacredGeometry.stages.eyeIntegration.end
-    const preloadStart = Math.max(0, tunnelStart - TUNNEL_DPR_PRELOAD_MARGIN)
-    const preloadEnd = Math.min(1, tunnelEnd + TUNNEL_DPR_PRELOAD_MARGIN)
-    const visualInside =
-      journey > preloadStart && journey < preloadEnd
-    const approachingForward =
-      target > journey && journey < preloadEnd && target > preloadStart
-    const approachingReverse =
-      target < journey && journey > preloadStart && target < preloadEnd
-    const shouldEnter =
-      visualInside || approachingForward || approachingReverse
-    const shouldExit =
-      (target <= preloadStart && journey <= preloadStart) ||
-      (target >= preloadEnd && journey >= preloadEnd)
-
-    if (!tunnelDprActiveRef.current && shouldEnter) {
-      normalDprRef.current = get().viewport.dpr
-      tunnelDprActiveRef.current = true
-      preparation.diagnostics.tunnelDprActive = true
-      const nextDpr = Math.min(normalDprRef.current, quality.tunnelDpr)
-      const dprChanged = Math.abs(nextDpr - get().viewport.dpr) > 0.0001
-      if (dprChanged) setDpr(nextDpr)
-      get().gl.getDrawingBufferSize(drawingBufferSize)
-      if (dprChanged) {
-        dprChangeCountRef.current += 1
-        preparation.diagnostics.dprChanges += 1
-      }
-      if (debugPerf && dprChanged) {
-        performance.mark(`tunnel-perf:dpr:${dprChangeCountRef.current}`)
-      }
-      if (dprChanged) {
-        logTunnelPerf(debugPerf, 'dpr-change', {
-          reason: 'tunnel-preload',
-          from: normalDprRef.current,
-          to: nextDpr,
-          rawProgress: target,
-          visualProgress: journey,
-          drawingBuffer: [drawingBufferSize.x, drawingBufferSize.y],
-        })
-      }
-    } else if (tunnelDprActiveRef.current && shouldExit) {
-      tunnelDprActiveRef.current = false
-      preparation.diagnostics.tunnelDprActive = false
-      const dprChanged =
-        Math.abs(normalDprRef.current - get().viewport.dpr) > 0.0001
-      if (dprChanged) setDpr(normalDprRef.current)
-      get().gl.getDrawingBufferSize(drawingBufferSize)
-      if (dprChanged) {
-        dprChangeCountRef.current += 1
-        preparation.diagnostics.dprChanges += 1
-      }
-      if (debugPerf && dprChanged) {
-        performance.mark(`tunnel-perf:dpr:${dprChangeCountRef.current}`)
-      }
-      if (dprChanged) {
-        logTunnelPerf(debugPerf, 'dpr-change', {
-          reason: 'tunnel-release',
-          to: normalDprRef.current,
-          rawProgress: target,
-          visualProgress: journey,
-          drawingBuffer: [drawingBufferSize.x, drawingBufferSize.y],
-        })
-      }
-    }
-  }, -90)
-
-  useEffect(
-    () => () => {
-      if (tunnelDprActiveRef.current) setDpr(normalDprRef.current)
-      preparation.diagnostics.tunnelDprActive = false
-    },
-    [preparation, setDpr],
-  )
-
-  return null
-}
-
 interface TunnelFrameDiagnosticsProps {
   journeyProgress: JourneyProgressRef
   preparation: TunnelPreparationState
@@ -250,9 +145,9 @@ function TunnelFrameDiagnostics({
       forcedMobileEconomy:
         new URLSearchParams(window.location.search).get('forceMobileEconomy') ===
         '1',
-      tunnelImplementation: quality.tunnelImplementation,
-      configuredRaymarchSteps: quality.tunnelSteps,
-      tunnelDprLimit: quality.tunnelDpr,
+      tunnelAngularSegments: quality.tunnelAngularSegments,
+      tunnelCells: quality.tunnelCells,
+      tunnelLayers: quality.tunnelLayers,
       currentDpr: gl.getPixelRatio(),
       drawingBuffer: [
         summaryDrawingBufferSize.x,
@@ -293,8 +188,9 @@ function TunnelFrameDiagnostics({
         pendingPrewarmTasks: getPendingPrewarmTaskCount(),
         programsBefore: rendererProgramCount(gl),
         profile: quality.name,
-        implementation: quality.tunnelImplementation,
-        configuredRaymarchSteps: quality.tunnelSteps,
+        tunnelAngularSegments: quality.tunnelAngularSegments,
+        tunnelCells: quality.tunnelCells,
+        tunnelLayers: quality.tunnelLayers,
         dpr: gl.getPixelRatio(),
         drawingBuffer: [
           summaryDrawingBufferSize.x,
@@ -407,7 +303,7 @@ export function Experience() {
           ],
           fov: CAMERA_BASELINE.fov,
         }}
-        dpr={[1, 1.75]}
+        dpr={quality.isMobile ? 1 : [1, 1.5]}
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
       >
@@ -416,16 +312,13 @@ export function Experience() {
           rawProgress={rawJourneyProgress}
           visualProgress={visualJourneyProgress}
         />
-        <TunnelDprController
-          rawProgress={rawJourneyProgress}
-          journeyProgress={visualJourneyProgress}
-          quality={quality}
-          debugPerf={debugPerf}
-          preparation={preparation}
-        />
         <CameraRig
           journeyProgress={visualJourneyProgress}
           pointer={pointer}
+        />
+        <AlienEye
+          journeyProgress={visualJourneyProgress}
+          quality={quality}
         />
         <ProceduralTunnel
           journeyProgress={visualJourneyProgress}
@@ -439,6 +332,7 @@ export function Experience() {
           quality={quality}
         />
         <SacredGeometryField journeyProgress={visualJourneyProgress} />
+        <TunnelRevealMask journeyProgress={visualJourneyProgress} />
         <JourneyPostProcessing
           journeyProgress={visualJourneyProgress}
           quality={quality}

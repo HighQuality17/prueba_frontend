@@ -1,9 +1,10 @@
 export interface RenderQualityProfile {
   readonly name: 'desktop' | 'mobile-economy'
   readonly isMobile: boolean
-  readonly tunnelImplementation: 'raymarch' | 'analytic'
-  readonly tunnelDpr: number
-  readonly tunnelSteps: number
+  readonly tunnelAngularSegments: number
+  readonly tunnelCrossSegments: number
+  readonly tunnelCells: number
+  readonly tunnelLayers: number
   readonly tunnelDetail: number
   readonly bloomEnabled: boolean
   readonly bloomMipmap: boolean
@@ -15,13 +16,14 @@ export interface RenderQualityProfile {
 const DESKTOP_PROFILE: RenderQualityProfile = {
   name: 'desktop',
   isMobile: false,
-  tunnelImplementation: 'raymarch',
-  tunnelDpr: 1.75,
-  tunnelSteps: 64,
+  tunnelAngularSegments: 192,
+  tunnelCrossSegments: 8,
+  tunnelCells: 28,
+  tunnelLayers: 4,
   tunnelDetail: 1,
   bloomEnabled: true,
   bloomMipmap: true,
-  bloomLevels: 5,
+  bloomLevels: 4,
   bloomResolutionScale: 0.5,
   chromaticAberrationEnabled: true,
 }
@@ -29,9 +31,10 @@ const DESKTOP_PROFILE: RenderQualityProfile = {
 const MOBILE_PROFILE: RenderQualityProfile = {
   name: 'mobile-economy',
   isMobile: true,
-  tunnelImplementation: 'analytic',
-  tunnelDpr: 1,
-  tunnelSteps: 0,
+  tunnelAngularSegments: 96,
+  tunnelCrossSegments: 6,
+  tunnelCells: 18,
+  tunnelLayers: 3,
   tunnelDetail: 0,
   bloomEnabled: false,
   bloomMipmap: false,
