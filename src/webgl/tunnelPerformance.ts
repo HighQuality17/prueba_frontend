@@ -17,6 +17,11 @@ export interface PreparationStep {
 export interface TunnelPreparationState {
   tunnel: PreparationStep
   postprocessing: PreparationStep
+  diagnostics: {
+    dprChanges: number
+    composerResizes: number
+    tunnelDprActive: boolean
+  }
 }
 
 function createStep(): PreparationStep {
@@ -36,6 +41,11 @@ export function createTunnelPreparationState(): TunnelPreparationState {
   return {
     tunnel: createStep(),
     postprocessing: createStep(),
+    diagnostics: {
+      dprChanges: 0,
+      composerResizes: 0,
+      tunnelDprActive: false,
+    },
   }
 }
 

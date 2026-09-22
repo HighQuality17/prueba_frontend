@@ -113,6 +113,7 @@ interface TunnelDprControllerProps {
   journeyProgress: JourneyProgressRef
   quality: RenderQualityProfile
   debugPerf: boolean
+  preparation: TunnelPreparationState
 }
 
 function TunnelDprController({
@@ -120,6 +121,7 @@ function TunnelDprController({
   journeyProgress,
   quality,
   debugPerf,
+  preparation,
 }: TunnelDprControllerProps) {
   const setDpr = useThree((state) => state.setDpr)
   const get = useThree((state) => state.get)
@@ -153,44 +155,60 @@ function TunnelDprController({
     if (!tunnelDprActiveRef.current && shouldEnter) {
       normalDprRef.current = get().viewport.dpr
       tunnelDprActiveRef.current = true
+      preparation.diagnostics.tunnelDprActive = true
       const nextDpr = Math.min(normalDprRef.current, quality.tunnelDpr)
-      setDpr(nextDpr)
+      const dprChanged = Math.abs(nextDpr - get().viewport.dpr) > 0.0001
+      if (dprChanged) setDpr(nextDpr)
       get().gl.getDrawingBufferSize(drawingBufferSize)
-      dprChangeCountRef.current += 1
-      if (debugPerf) {
+      if (dprChanged) {
+        dprChangeCountRef.current += 1
+        preparation.diagnostics.dprChanges += 1
+      }
+      if (debugPerf && dprChanged) {
         performance.mark(`tunnel-perf:dpr:${dprChangeCountRef.current}`)
       }
-      logTunnelPerf(debugPerf, 'dpr-change', {
-        reason: 'tunnel-preload',
-        from: normalDprRef.current,
-        to: nextDpr,
-        rawProgress: target,
-        visualProgress: journey,
-        drawingBuffer: [drawingBufferSize.x, drawingBufferSize.y],
-      })
+      if (dprChanged) {
+        logTunnelPerf(debugPerf, 'dpr-change', {
+          reason: 'tunnel-preload',
+          from: normalDprRef.current,
+          to: nextDpr,
+          rawProgress: target,
+          visualProgress: journey,
+          drawingBuffer: [drawingBufferSize.x, drawingBufferSize.y],
+        })
+      }
     } else if (tunnelDprActiveRef.current && shouldExit) {
       tunnelDprActiveRef.current = false
-      setDpr(normalDprRef.current)
+      preparation.diagnostics.tunnelDprActive = false
+      const dprChanged =
+        Math.abs(normalDprRef.current - get().viewport.dpr) > 0.0001
+      if (dprChanged) setDpr(normalDprRef.current)
       get().gl.getDrawingBufferSize(drawingBufferSize)
-      dprChangeCountRef.current += 1
-      if (debugPerf) {
+      if (dprChanged) {
+        dprChangeCountRef.current += 1
+        preparation.diagnostics.dprChanges += 1
+      }
+      if (debugPerf && dprChanged) {
         performance.mark(`tunnel-perf:dpr:${dprChangeCountRef.current}`)
       }
-      logTunnelPerf(debugPerf, 'dpr-change', {
-        reason: 'tunnel-release',
-        to: normalDprRef.current,
-        rawProgress: target,
-        visualProgress: journey,
-        drawingBuffer: [drawingBufferSize.x, drawingBufferSize.y],
-      })
+      if (dprChanged) {
+        logTunnelPerf(debugPerf, 'dpr-change', {
+          reason: 'tunnel-release',
+          to: normalDprRef.current,
+          rawProgress: target,
+          visualProgress: journey,
+          drawingBuffer: [drawingBufferSize.x, drawingBufferSize.y],
+        })
+      }
     }
   }, -90)
 
   useEffect(
     () => () => {
       if (tunnelDprActiveRef.current) setDpr(normalDprRef.current)
+      preparation.diagnostics.tunnelDprActive = false
     },
-    [setDpr],
+    [preparation, setDpr],
   )
 
   return null
@@ -199,15 +217,51 @@ function TunnelDprController({
 interface TunnelFrameDiagnosticsProps {
   journeyProgress: JourneyProgressRef
   preparation: TunnelPreparationState
+  quality: RenderQualityProfile
 }
 
 function TunnelFrameDiagnostics({
   journeyProgress,
   preparation,
+  quality,
 }: TunnelFrameDiagnosticsProps) {
+  const gl = useThree((state) => state.gl)
   const wasVisibleRef = useRef(false)
   const activeMeasureRef = useRef<string | null>(null)
   const entryCountRef = useRef(0)
+  const intervals = useMemo(() => new Float64Array(4096), [])
+  const intervalCountRef = useRef(0)
+  const intervalIndexRef = useRef(0)
+  const intervalsOver33Ref = useRef(0)
+  const intervalsOver50Ref = useRef(0)
+  const previousRenderTimeRef = useRef<number | null>(null)
+  const summaryPendingRef = useRef(false)
+  const summarizedDprChangesRef = useRef(0)
+  const summarizedComposerResizesRef = useRef(0)
+  const profileLoggedRef = useRef(false)
+  const summaryDrawingBufferSize = useMemo(() => new Vector2(), [])
+
+  useEffect(() => {
+    if (profileLoggedRef.current) return
+    profileLoggedRef.current = true
+    gl.getDrawingBufferSize(summaryDrawingBufferSize)
+    logTunnelPerf(true, 'profile', {
+      profile: quality.name,
+      forcedMobileEconomy:
+        new URLSearchParams(window.location.search).get('forceMobileEconomy') ===
+        '1',
+      tunnelImplementation: quality.tunnelImplementation,
+      configuredRaymarchSteps: quality.tunnelSteps,
+      tunnelDprLimit: quality.tunnelDpr,
+      currentDpr: gl.getPixelRatio(),
+      drawingBuffer: [
+        summaryDrawingBufferSize.x,
+        summaryDrawingBufferSize.y,
+      ],
+      bloomActive: quality.bloomEnabled,
+      chromaticAberrationActive: quality.chromaticAberrationEnabled,
+    })
+  }, [gl, quality, summaryDrawingBufferSize])
 
   useFrame(({ gl }) => {
     const journey = journeyProgress.current
@@ -218,12 +272,19 @@ function TunnelFrameDiagnostics({
     const visible =
       journey > revealThreshold &&
       journey < worldEffects.sacredGeometry.stages.eyeIntegration.end
+    const renderTime = performance.now()
 
     if (visible && !wasVisibleRef.current) {
       entryCountRef.current += 1
       const markName = `tunnel-perf:entry:${entryCountRef.current}`
       activeMeasureRef.current = markName
+      intervalCountRef.current = 0
+      intervalIndexRef.current = 0
+      intervalsOver33Ref.current = 0
+      intervalsOver50Ref.current = 0
+      previousRenderTimeRef.current = renderTime
       performance.mark(`${markName}:start`)
+      gl.getDrawingBufferSize(summaryDrawingBufferSize)
       logTunnelPerf(true, 'tunnel-entry', {
         entry: entryCountRef.current,
         visualProgress: journey,
@@ -231,26 +292,84 @@ function TunnelFrameDiagnostics({
         postPreparation: preparation.postprocessing.status,
         pendingPrewarmTasks: getPendingPrewarmTaskCount(),
         programsBefore: rendererProgramCount(gl),
+        profile: quality.name,
+        implementation: quality.tunnelImplementation,
+        configuredRaymarchSteps: quality.tunnelSteps,
+        dpr: gl.getPixelRatio(),
+        drawingBuffer: [
+          summaryDrawingBufferSize.x,
+          summaryDrawingBufferSize.y,
+        ],
+        bloomActive: quality.bloomEnabled,
+        chromaticAberrationActive: quality.chromaticAberrationEnabled,
       })
+    } else if (visible && previousRenderTimeRef.current !== null) {
+      const interval = renderTime - previousRenderTimeRef.current
+      intervals[intervalIndexRef.current] = interval
+      intervalIndexRef.current = (intervalIndexRef.current + 1) % intervals.length
+      intervalCountRef.current += 1
+      if (interval > 33) intervalsOver33Ref.current += 1
+      if (interval > 50) intervalsOver50Ref.current += 1
+      previousRenderTimeRef.current = renderTime
+    } else if (!visible && wasVisibleRef.current) {
+      summaryPendingRef.current = true
+      previousRenderTimeRef.current = null
     }
     wasVisibleRef.current = visible
   }, -95)
 
   useFrame(({ gl }) => {
     const markName = activeMeasureRef.current
-    if (!markName) return
+    if (markName) {
+      activeMeasureRef.current = null
+      performance.mark(`${markName}:end`)
+      const measure = performance.measure(markName, {
+        start: `${markName}:start`,
+        end: `${markName}:end`,
+      })
+      logTunnelPerf(true, 'tunnel-entry-render', {
+        entry: entryCountRef.current,
+        cpuDurationMs: Number(measure.duration.toFixed(2)),
+        programsAfter: rendererProgramCount(gl),
+        note: 'CPU submission time; this is not GPU time.',
+      })
+    }
 
-    activeMeasureRef.current = null
-    performance.mark(`${markName}:end`)
-    const measure = performance.measure(markName, {
-      start: `${markName}:start`,
-      end: `${markName}:end`,
-    })
-    logTunnelPerf(true, 'tunnel-entry-render', {
+    if (
+      !summaryPendingRef.current ||
+      preparation.diagnostics.tunnelDprActive
+    ) {
+      return
+    }
+    summaryPendingRef.current = false
+    const storedCount = Math.min(intervalCountRef.current, intervals.length)
+    const sorted = Array.from(intervals.slice(0, storedCount)).sort(
+      (a, b) => a - b,
+    )
+    const percentile = (ratio: number) =>
+      storedCount === 0
+        ? null
+        : sorted[Math.min(storedCount - 1, Math.floor(storedCount * ratio))]
+    const dprChanges =
+      preparation.diagnostics.dprChanges - summarizedDprChangesRef.current
+    const composerResizes =
+      preparation.diagnostics.composerResizes -
+      summarizedComposerResizesRef.current
+    summarizedDprChangesRef.current = preparation.diagnostics.dprChanges
+    summarizedComposerResizesRef.current =
+      preparation.diagnostics.composerResizes
+    logTunnelPerf(true, 'tunnel-summary', {
       entry: entryCountRef.current,
-      cpuDurationMs: Number(measure.duration.toFixed(2)),
-      programsAfter: rendererProgramCount(gl),
-      note: 'CPU submission time; this is not GPU time.',
+      profile: quality.name,
+      observedIntervals: intervalCountRef.current,
+      storedIntervals: storedCount,
+      medianIntervalMs: percentile(0.5),
+      p95IntervalMs: percentile(0.95),
+      intervalsOver33Ms: intervalsOver33Ref.current,
+      intervalsOver50Ms: intervalsOver50Ref.current,
+      dprChanges,
+      composerResizes,
+      note: 'Observed render cadence; this is not CPU-only or GPU time.',
     })
   }, 2)
 
@@ -302,6 +421,7 @@ export function Experience() {
           journeyProgress={visualJourneyProgress}
           quality={quality}
           debugPerf={debugPerf}
+          preparation={preparation}
         />
         <CameraRig
           journeyProgress={visualJourneyProgress}
@@ -316,6 +436,7 @@ export function Experience() {
         <ParticleSystem
           journeyProgress={visualJourneyProgress}
           pointer={pointer}
+          quality={quality}
         />
         <SacredGeometryField journeyProgress={visualJourneyProgress} />
         <JourneyPostProcessing
@@ -328,6 +449,7 @@ export function Experience() {
           <TunnelFrameDiagnostics
             journeyProgress={visualJourneyProgress}
             preparation={preparation}
+            quality={quality}
           />
         )}
       </Canvas>

@@ -119,14 +119,16 @@ function getBloomRenderTargets(
 function initializePostTargets(
   gl: WebGLRenderer,
   composer: EffectComposerImpl,
-  bloom: BloomEffect,
+  bloom: BloomEffect | null,
   quality: RenderQualityProfile,
 ): void {
   gl.initRenderTarget(composer.inputBuffer)
   gl.initRenderTarget(composer.outputBuffer)
-  getBloomRenderTargets(bloom, quality).forEach((target) => {
-    gl.initRenderTarget(target)
-  })
+  if (bloom) {
+    getBloomRenderTargets(bloom, quality).forEach((target) => {
+      gl.initRenderTarget(target)
+    })
+  }
 }
 
 function warmPostProcessing(
@@ -192,7 +194,7 @@ function JourneyBloomPass({
       kernelSize: quality.isMobile ? KernelSize.SMALL : KernelSize.LARGE,
       resolutionScale: quality.bloomResolutionScale,
     })
-    if (quality.isMobile) {
+    if (!quality.chromaticAberrationEnabled) {
       effect.luminancePass.resolution.scale = MOBILE_BLOOM_LUMINANCE_SCALE
     }
     const pass = new EffectPass(camera, effect)
@@ -217,6 +219,10 @@ function JourneyBloomPass({
   }, -10)
 
   return <primitive object={bloomPass} />
+}
+
+function OptionalJourneyBloomPass(props: JourneyPassProps) {
+  return props.quality.bloomEnabled ? <JourneyBloomPass {...props} /> : null
 }
 
 function JourneyColorOutputPass({
@@ -279,7 +285,7 @@ export function JourneyPostProcessing({
   debugPerf,
 }: JourneyPostProcessingProps) {
   const composerRef = useRef<EffectComposerImpl>(null)
-  const lastComposerDprRef = useRef(-1)
+  const lastComposerSizeRef = useRef({ width: -1, height: -1 })
   const composerResizeCountRef = useRef(0)
   const drawingBufferSize = useMemo(() => new Vector2(), [])
   const resources = useRef<PostProcessingResources>({
@@ -294,49 +300,57 @@ export function JourneyPostProcessing({
       async () => {
         const composer = composerRef.current
         const { bloom, bloomPass, outputPass } = resources.current
-        if (!composer || !bloom || !bloomPass || !outputPass) {
+        if (
+          !composer ||
+          !outputPass ||
+          (quality.bloomEnabled && (!bloom || !bloomPass))
+        ) {
           throw new Error('Postprocessing resources are not mounted')
         }
 
         beginPreparation(preparation, 'postprocessing', composer.getRenderer(), debugPerf)
         const gl = composer.getRenderer()
-        const internals = bloom as unknown as BloomPrewarmInternals
-        await compilePass(gl, bloomPass as unknown as CompilablePass)
-        if (!active) return
-        await compilePass(gl, internals.luminancePass)
-        if (!active) return
+        if (bloom && bloomPass) {
+          const internals = bloom as unknown as BloomPrewarmInternals
+          await compilePass(gl, bloomPass as unknown as CompilablePass)
+          if (!active) return
+          await compilePass(gl, internals.luminancePass)
+          if (!active) return
 
-        if (quality.bloomMipmap) {
-          await compilePass(
-            gl,
-            internals.mipmapBlurPass,
-            internals.mipmapBlurPass.downsamplingMaterial,
-          )
-          if (!active) return
-          await compilePass(
-            gl,
-            internals.mipmapBlurPass,
-            internals.mipmapBlurPass.upsamplingMaterial,
-          )
-        } else {
-          await compilePass(
-            gl,
-            internals.blurPass,
-            internals.blurPass.blurMaterial,
-          )
-          if (!active) return
-          await compilePass(
-            gl,
-            internals.blurPass,
-            internals.blurPass.copyMaterial,
-          )
+          if (quality.bloomMipmap) {
+            await compilePass(
+              gl,
+              internals.mipmapBlurPass,
+              internals.mipmapBlurPass.downsamplingMaterial,
+            )
+            if (!active) return
+            await compilePass(
+              gl,
+              internals.mipmapBlurPass,
+              internals.mipmapBlurPass.upsamplingMaterial,
+            )
+          } else {
+            await compilePass(
+              gl,
+              internals.blurPass,
+              internals.blurPass.blurMaterial,
+            )
+            if (!active) return
+            await compilePass(
+              gl,
+              internals.blurPass,
+              internals.blurPass.copyMaterial,
+            )
+          }
         }
 
         if (!active) return
         await compilePass(gl, outputPass as unknown as CompilablePass)
         if (!active) return
         initializePostTargets(gl, composer, bloom, quality)
-        warmPostProcessing(gl, composer, bloomPass, outputPass)
+        if (bloomPass) {
+          warmPostProcessing(gl, composer, bloomPass, outputPass)
+        }
       },
     ])
     scheduled.promise
@@ -365,15 +379,24 @@ export function JourneyPostProcessing({
 
   useFrame((state) => {
     const composer = composerRef.current
-    if (!composer || lastComposerDprRef.current === state.viewport.dpr) return
+    if (!composer) return
+
+    state.gl.getDrawingBufferSize(drawingBufferSize)
+    const lastSize = lastComposerSizeRef.current
+    if (
+      lastSize.width === drawingBufferSize.x &&
+      lastSize.height === drawingBufferSize.y
+    ) {
+      return
+    }
 
     const resizeStart = performance.now()
-    lastComposerDprRef.current = state.viewport.dpr
+    lastSize.width = drawingBufferSize.x
+    lastSize.height = drawingBufferSize.y
     composer.setSize(state.size.width, state.size.height)
-    const bloom = resources.current.bloom
-    if (bloom) initializePostTargets(state.gl, composer, bloom, quality)
-    state.gl.getDrawingBufferSize(drawingBufferSize)
+    initializePostTargets(state.gl, composer, resources.current.bloom, quality)
     composerResizeCountRef.current += 1
+    preparation.diagnostics.composerResizes += 1
     if (debugPerf) {
       const markName = `tunnel-perf:composer-resize:${composerResizeCountRef.current}`
       performance.mark(`${markName}:start`, { startTime: resizeStart })
@@ -397,7 +420,7 @@ export function JourneyPostProcessing({
       multisampling={0}
       frameBufferType={HalfFloatType}
     >
-      <JourneyBloomPass
+      <OptionalJourneyBloomPass
         journeyProgress={journeyProgress}
         quality={quality}
         preparation={preparation}

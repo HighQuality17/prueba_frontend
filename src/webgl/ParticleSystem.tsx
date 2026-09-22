@@ -39,6 +39,7 @@ import {
 } from './timeline/mapJourneyProgress'
 import type { JourneyProgressRef } from './timeline/journeyProgress'
 import type { ParticlePointerRef } from './useParticlePointer'
+import type { RenderQualityProfile } from './renderQuality'
 
 /*
   Colors come strictly from the design token palette
@@ -98,6 +99,7 @@ function hexToRgb(hex: string): [number, number, number] {
 interface ParticleSystemProps {
   journeyProgress: JourneyProgressRef
   pointer: ParticlePointerRef
+  quality: RenderQualityProfile
 }
 
 function uploadMorphSegment(
@@ -119,6 +121,7 @@ function uploadMorphSegment(
 export function ParticleSystem({
   journeyProgress,
   pointer,
+  quality,
 }: ParticleSystemProps) {
   const materialRef = useRef<ShaderMaterial>(null)
 
@@ -126,7 +129,9 @@ export function ParticleSystem({
   const canvasWidth = useThree((state) => state.size.width)
   // Select once so viewport resizes never regenerate particle buffers.
   const particleCountRef = useRef(
-    canvasWidth <= 768 ? PARTICLE_COUNT_MOBILE : PARTICLE_COUNT_DESKTOP,
+    quality.isMobile || canvasWidth <= 768
+      ? PARTICLE_COUNT_MOBILE
+      : PARTICLE_COUNT_DESKTOP,
   )
   const particleCount = particleCountRef.current
   const activeSegmentRef = useRef(0)
@@ -255,7 +260,20 @@ export function ParticleSystem({
     material.uniforms.uViewportAspect.value =
       size.width / Math.max(size.height, 1)
 
+    const baseParticleOpacity = portalParticleOpacity(
+      journey,
+      particleEffects.portalFade,
+    )
+    const particleOpacity = quality.isMobile
+      ? MathUtils.clamp(
+          (baseParticleOpacity - particleEffects.portalFade.minimumOpacity) /
+            (1 - particleEffects.portalFade.minimumOpacity),
+          0,
+          1,
+        )
+      : baseParticleOpacity
     material.visible =
+      particleOpacity > 0.0001 &&
       journey < worldEffects.sacredGeometry.stages.eyeIntegration.end
     if (!material.visible) return
 
@@ -328,8 +346,7 @@ export function ParticleSystem({
       ),
     )
     material.uniforms.uParticleOpacity.value =
-      portalParticleOpacity(journey, particleEffects.portalFade) *
-      (1 - geometryHandoff)
+      particleOpacity * (1 - geometryHandoff)
   })
 
   // Composition bias: the cloud sits slightly right of center,

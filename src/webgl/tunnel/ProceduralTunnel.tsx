@@ -10,6 +10,7 @@ import {
   WebGLRenderTarget,
 } from 'three'
 import {
+  mobileTunnelFragmentShader,
   tunnelFragmentShader,
   tunnelVertexShader,
 } from './tunnelShader'
@@ -262,7 +263,11 @@ export function ProceduralTunnel({
       <shaderMaterial
         ref={materialRef}
         vertexShader={tunnelVertexShader}
-        fragmentShader={tunnelFragmentShader}
+        fragmentShader={
+          quality.tunnelImplementation === 'analytic'
+            ? mobileTunnelFragmentShader
+            : tunnelFragmentShader
+        }
         uniforms={uniforms}
         transparent
         depthTest={false}

@@ -31,6 +31,179 @@ void main() {
 }
 `
 
+export const mobileTunnelFragmentShader = /* glsl */ `
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uReveal;
+uniform float uOpacity;
+uniform float uTravel;
+uniform vec2 uFamilyEvolution;
+uniform float uTwist;
+uniform float uColorPhase;
+uniform float uSpectralProgress;
+uniform float uOrganicStrength;
+uniform float uCellularStrength;
+uniform float uOrganicCore;
+uniform float uOrganicPulse;
+uniform float uEyeStrength;
+uniform float uPupilStrength;
+uniform float uEyeGlint;
+uniform float uEyeBlink;
+
+#define TWO_PI 6.28318530718
+#define APERTURE_MAX 2.6
+
+vec3 cosinePalette(float t) {
+  return vec3(0.38, 0.32, 0.45)
+    + vec3(0.45, 0.38, 0.45) * cos(TWO_PI * (t + vec3(0.82, 0.58, 0.34)));
+}
+
+float ridge(float coordinate, float width, float aa) {
+  float distanceToLine = abs(fract(coordinate) - 0.5);
+  return 1.0 - smoothstep(width, width + aa, distanceToLine);
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy * 2.0 - uResolution) / uResolution.y;
+  float radius = length(uv);
+  float safeRadius = max(radius, 0.055);
+  float theta = atan(uv.y, uv.x);
+
+  float familyProgress = clamp(
+    (uFamilyEvolution.x + uFamilyEvolution.y) * 0.5,
+    0.0,
+    1.0
+  );
+  float symmetry = mix(6.0, 12.0, max(familyProgress, uSpectralProgress));
+  float inverseDepth = 1.0 / safeRadius;
+  float twistedTheta = theta
+    + uTwist * (uTravel * 0.055 + inverseDepth * 0.32);
+  float primaryLobe = cos(symmetry * twistedTheta);
+  float organicLobe = sin(6.0 * theta + uTravel * 0.11) * uOrganicPulse;
+  float organicWarp = uOrganicStrength * organicLobe * 0.035;
+  float warpedRadius = radius * (1.0 + 0.07 * primaryLobe + organicWarp);
+  float tunnelDepth = 1.0 / max(warpedRadius, 0.055);
+  float travel = uTravel * 0.34;
+  float ringCoordinate = tunnelDepth * 1.28 + travel;
+  float aa = max(fwidth(ringCoordinate) * 1.25, 0.012);
+
+  float macroRing = ridge(ringCoordinate, 0.055, aa);
+  float midRing = ridge(
+    ringCoordinate * 1.47 + 0.2 + 0.08 * primaryLobe,
+    0.045,
+    aa * 1.2
+  );
+  float innerRing = ridge(
+    ringCoordinate * 2.05 - 0.16 + 0.06 * organicLobe,
+    0.034,
+    aa * 1.45
+  );
+  float centerFocus = exp(-radius * 2.8);
+  float radialEnvelope = 1.0 - smoothstep(0.08, 1.65, radius);
+  float lineField = max(
+    macroRing * 0.72,
+    max(midRing * 0.82, innerRing)
+  ) * radialEnvelope;
+
+  float depthTone = 0.5 + 0.5 * cos(
+    tunnelDepth * 0.52 + travel * 0.3 + primaryLobe * 0.45
+  );
+  vec3 cyan = vec3(0.02, 0.92, 0.68);
+  vec3 violet = vec3(0.58, 0.08, 1.0);
+  vec3 magenta = vec3(1.0, 0.05, 0.48);
+  vec3 orange = vec3(1.0, 0.34, 0.04);
+  vec3 warmWhite = vec3(1.0, 0.98, 0.82);
+  vec3 earlyColor = mix(cyan, violet, 0.25 + 0.35 * depthTone);
+  vec3 deepColor = mix(magenta, orange, 0.2 + 0.45 * depthTone);
+  vec3 hierarchyColor = mix(
+    earlyColor,
+    deepColor,
+    smoothstep(0.22, 0.9, uSpectralProgress)
+  );
+  hierarchyColor = mix(
+    hierarchyColor,
+    cosinePalette(uColorPhase + tunnelDepth * 0.035),
+    0.14
+  );
+
+  float cellularPulse = 0.5 + 0.5 * sin(
+    6.0 * theta + ringCoordinate * TWO_PI
+  );
+  vec3 biologicalColor = mix(
+    vec3(0.03, 0.72, 0.62),
+    vec3(0.72, 0.015, 0.38),
+    cellularPulse
+  );
+  hierarchyColor = mix(
+    hierarchyColor,
+    biologicalColor,
+    uOrganicStrength * (0.16 + 0.22 * uCellularStrength)
+  );
+
+  vec3 color = hierarchyColor * lineField * (0.42 + 0.58 * depthTone);
+  color += mix(hierarchyColor, warmWhite, 0.5)
+    * innerRing * centerFocus * (0.12 + 0.26 * uSpectralProgress);
+  color += hierarchyColor * centerFocus * centerFocus * 0.055;
+  color *= 0.97 + 0.03 * sin(uTime * 0.16 + tunnelDepth);
+
+  if (uEyeStrength > 0.0001) {
+    vec2 eyeUv = uv / 0.82;
+    float eyeRadius = length(eyeUv);
+    float eyeTheta = atan(eyeUv.y, eyeUv.x);
+    float irisMask = 1.0 - smoothstep(0.82, 1.0, eyeRadius);
+    float irisBand = 0.5 + 0.5 * cos(
+      eyeRadius * 34.0 + sin(6.0 * eyeTheta) * 0.75
+    );
+    vec3 irisColor = mix(cyan, violet, irisBand);
+    irisColor = mix(irisColor, magenta, 0.24 * (1.0 - irisBand));
+
+    float vertical = clamp(abs(eyeUv.y) / 0.66, 0.0, 1.0);
+    float pupilHalfWidth = mix(0.115, 0.026, vertical * vertical);
+    float pupil = 1.0 - smoothstep(
+      pupilHalfWidth,
+      pupilHalfWidth + 0.02,
+      abs(eyeUv.x)
+    );
+    pupil *= 1.0 - smoothstep(0.58, 0.68, abs(eyeUv.y));
+    irisColor = mix(
+      irisColor,
+      vec3(0.0004, 0.0007, 0.0012),
+      pupil * uPupilStrength
+    );
+
+    vec2 glintOffset = eyeUv - vec2(-0.1, 0.16);
+    float glint = exp(-dot(glintOffset, glintOffset) * 380.0);
+    irisColor += warmWhite * glint * uEyeGlint * 1.8;
+
+    float blinkOpening = mix(1.15, 0.018, uEyeBlink);
+    float aperture = 1.0 - smoothstep(
+      blinkOpening - 0.028,
+      blinkOpening + 0.028,
+      abs(eyeUv.y)
+    );
+    irisColor *= aperture;
+    float eyeBlend = irisMask * uEyeStrength;
+    color = mix(color, irisColor, eyeBlend);
+    lineField = max(lineField, eyeBlend);
+  }
+
+  float aperture = mix(0.0, APERTURE_MAX, uReveal);
+  float revealAA = max(fwidth(radius) * 1.5, 1.0 / uResolution.y);
+  float revealMask = 1.0 - smoothstep(
+    aperture * 0.72 - revealAA,
+    aperture + revealAA,
+    radius
+  );
+  float edgeGlow = exp(-abs(radius - aperture) * 6.0)
+    * (1.0 - uReveal) * step(0.001, aperture);
+  color += cosinePalette(uColorPhase * 2.0 + radius * 0.4)
+    * edgeGlow * 0.28;
+
+  float alpha = uOpacity * revealMask * clamp(lineField + edgeGlow, 0.0, 1.0);
+  gl_FragColor = vec4(color, alpha);
+}
+`
+
 export const tunnelFragmentShader = /* glsl */ `
 uniform vec2 uResolution;
 uniform float uTime;

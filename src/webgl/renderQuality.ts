@@ -1,31 +1,43 @@
 export interface RenderQualityProfile {
+  readonly name: 'desktop' | 'mobile-economy'
   readonly isMobile: boolean
+  readonly tunnelImplementation: 'raymarch' | 'analytic'
   readonly tunnelDpr: number
   readonly tunnelSteps: number
   readonly tunnelDetail: number
+  readonly bloomEnabled: boolean
   readonly bloomMipmap: boolean
   readonly bloomLevels: number
   readonly bloomResolutionScale: number
+  readonly chromaticAberrationEnabled: boolean
 }
 
 const DESKTOP_PROFILE: RenderQualityProfile = {
+  name: 'desktop',
   isMobile: false,
+  tunnelImplementation: 'raymarch',
   tunnelDpr: 1.75,
   tunnelSteps: 64,
   tunnelDetail: 1,
+  bloomEnabled: true,
   bloomMipmap: true,
   bloomLevels: 5,
   bloomResolutionScale: 0.5,
+  chromaticAberrationEnabled: true,
 }
 
 const MOBILE_PROFILE: RenderQualityProfile = {
+  name: 'mobile-economy',
   isMobile: true,
-  tunnelDpr: 1.15,
-  tunnelSteps: 28,
+  tunnelImplementation: 'analytic',
+  tunnelDpr: 1,
+  tunnelSteps: 0,
   tunnelDetail: 0,
+  bloomEnabled: false,
   bloomMipmap: false,
   bloomLevels: 0,
   bloomResolutionScale: 0.35,
+  chromaticAberrationEnabled: false,
 }
 
 interface NavigatorDeviceSignals extends Navigator {
@@ -34,6 +46,9 @@ interface NavigatorDeviceSignals extends Navigator {
 
 export function detectRenderQuality(): RenderQualityProfile {
   if (typeof window === 'undefined') return DESKTOP_PROFILE
+
+  const query = new URLSearchParams(window.location.search)
+  if (query.get('forceMobileEconomy') === '1') return MOBILE_PROFILE
 
   const navigatorWithSignals = navigator as NavigatorDeviceSignals
   const coarsePointer = window.matchMedia('(pointer: coarse)').matches
